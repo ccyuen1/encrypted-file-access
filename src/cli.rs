@@ -37,6 +37,6 @@ pub struct OpenArgs {
     pub file: PathBuf,
 
     #[arg(short, long)]
-    /// Program to open the decrypted file
+    /// Executable to open the decrypted file. If not given, use the default system handler
     pub executable: Option<PathBuf>,
 }
