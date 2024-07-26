@@ -12,7 +12,7 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Actions {
-    /// Create a encrypted file
+    /// Create an encrypted file
     Create(CreateArgs),
 
     /// Open an encrypted file
@@ -29,6 +29,10 @@ pub enum Actions {
 pub struct CreateArgs {
     /// Path to the encrypted file to create
     pub file: PathBuf,
+
+    #[arg(long)]
+    /// Do not compress the decrypted file before encryption
+    pub no_compress: bool,
 }
 
 #[derive(Args, Debug)]
