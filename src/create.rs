@@ -13,6 +13,10 @@ pub struct CreateArgs {
     /// Path to the plaintext file to be encrypted. If missing, an empty file is created
     pub src: Option<PathBuf>,
 
+    #[arg(short, long)]
+    /// Extension for the decrypted file. Overwitten by extension of src if provided. Default to txt
+    pub extension: Option<String>,
+
     #[arg(long)]
     /// If given, the plaintext file is not compressed before encryption
     pub no_compress: bool,

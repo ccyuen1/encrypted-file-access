@@ -19,6 +19,8 @@ Line 1: Format version number in text. Example: 0.1
 
 Line 2: It is always "encrypted-file-format" (without quotes) to mark that the file is in our format.
 
+Line 3: Extension of the decrypted file. Example: txt
+
 An extra line feed ends the header.
 
 ## Metadata Section
