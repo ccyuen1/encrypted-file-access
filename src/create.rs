@@ -1,8 +1,22 @@
-use std::{fs::OpenOptions, io::Write};
+use std::{fs::OpenOptions, io::Write, path::PathBuf};
 
+use clap::Args;
 use zeroize::Zeroize;
 
-use crate::cli::CreateArgs;
+#[derive(Args, Debug)]
+/// Arguments for creating a new encrypted file
+pub struct CreateArgs {
+    /// Path to the encrypted file to create
+    pub file: PathBuf,
+
+    #[arg(short, long)]
+    /// Path to the plaintext file to be encrypted. If missing, an empty file is created
+    pub src: Option<PathBuf>,
+
+    #[arg(long)]
+    /// If given, the plaintext file is not compressed before encryption
+    pub no_compress: bool,
+}
 
 /// Create a new encrypted file in the given path.
 /// Do nothing and return error if the file already exists.
