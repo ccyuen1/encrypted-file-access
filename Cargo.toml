@@ -7,13 +7,14 @@ authors = ["ccyuen1"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-aes-gcm-siv = "0.11.1"
-argon2 = "0.5.3"
+aes-gcm-siv = { version = "0.11.1", features = ["std"] }
+argon2 = { version = "0.5.3", features = ["std"] }
 clap = { version = "4.5.11", features = ["derive"] }
 env_logger = "0.11.5"
 log = "0.4.22"
 lzma-rs = "0.3.0"
 open = "5.3.0"
+rand = "0.8.5"
 rpassword = "7.3.1"
 tempfile = "3.10.1"
 zeroize = "1.8.1"
