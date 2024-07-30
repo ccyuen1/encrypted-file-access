@@ -28,7 +28,7 @@ An extra line feed ends the header.
 The metadata section has a fixed size. It stores the metadata in the following order.
 
 1. The first byte is 0x01 if the plaintext file is compressed before encryption, otherwise 0x00.
-   If the plaintext is compressed, it is compressed in LZMA2 format.
+   If the plaintext is compressed, it is compressed in XZ format.
 
 2. The salt for key derivation function, i.e., Argon2id, in 32 bytes in plain binary format.
 
