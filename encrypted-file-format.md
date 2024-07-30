@@ -8,20 +8,18 @@ An encrypted file consists of three parts: a header, a metadata section, and a b
 
 ## Header
 
-The header is in raw UTF-8 text with a fixed number of lines.
-Each line is ended by exactly one line feed (0x0A).
-The size of the header is subject to change.
-Leading and trailing spaces should not exist.
+The header is in UTF-8 CSV format with one line.
+Each field is ended by exactly one comma.
+Leading and trailing spaces should not exist for any field.
+A line feed ends the header.
 
-The lines are in the following order.
+The fields are in the following order.
 
-Line 1: Format version number in text. Example: 0.1
+Field 1: Format version number in text. Example: 0.1
 
-Line 2: It is always "encrypted-file-format" (without quotes) to mark that the file is in our format.
+Field 2: It is always "encrypted-file-format" (without quotes) to mark that the file is in our format.
 
-Line 3: Extension of the decrypted file. Example: txt
-
-An extra line feed ends the header.
+Field 3: Extension of the decrypted file. Example: txt
 
 ## Metadata Section
 
