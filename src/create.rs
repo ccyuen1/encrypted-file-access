@@ -6,9 +6,10 @@ use std::{
 
 use aes_gcm_siv::{aead::Aead, Aes256GcmSiv, Key, KeyInit, Nonce};
 use argon2::{Algorithm, Argon2, Params, Version};
-use bincode::Options;
 use clap::Args;
+use either::Either::{Left, Right};
 use rand::{Rng, SeedableRng};
+use xz2::bufread::XzEncoder;
 use zeroize::Zeroize;
 
 use crate::encrypted_file_format::{Header, HeaderBuilder, Metadata};
@@ -83,7 +84,7 @@ pub fn create(args: &CreateArgs) -> Result<(), Box<dyn std::error::Error>> {
     let kek = prompt_for_password_and_derive_kek(&salt)?;
 
     // generate the data encryption key (DEK)
-    let dek = Key::<Aes256GcmSiv>::from(rng.gen::<[u8; 32]>());
+    let mut dek = Key::<Aes256GcmSiv>::from(rng.gen::<[u8; 32]>());
 
     // encrypt the DEK using KEK
     let cipher = Aes256GcmSiv::new(&kek);
@@ -102,8 +103,26 @@ pub fn create(args: &CreateArgs) -> Result<(), Box<dyn std::error::Error>> {
     };
     write_metadata(&mut out_file, &md)?;
 
-    // TODO: encrypt the file content and store to output file
-    let cipher = Aes256GcmSiv::new(&dek);
+    // encrypt the file content and store to output file
+    if let Some(src) = args.src.as_ref() {
+        // prepare for the file body encryption
+        let non_dek = Nonce::from(md.nonce_dek);
+        let cipher = Aes256GcmSiv::new(&dek);
+        dek.zeroize();
+
+        // get handler of the source file if specified
+        let reader = io::BufReader::new(File::open(src)?);
+
+        // compress the file body if compression is enabled
+        let mut reader = if !args.no_compress {
+            Left(XzEncoder::new(reader, 6))
+        } else {
+            Right(reader)
+        };
+
+        // encrypt the file body
+        
+    }
 
     out_file.flush()?;
 
