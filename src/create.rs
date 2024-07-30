@@ -10,6 +10,8 @@ use clap::Args;
 use rand::{Rng, SeedableRng};
 use zeroize::Zeroize;
 
+use crate::encrypted_file_format::{Header, Metadata};
+
 #[derive(Args, Debug)]
 /// Arguments for creating a new encrypted file
 pub struct CreateArgs {
@@ -31,16 +33,6 @@ pub struct CreateArgs {
     #[arg(short, long)]
     /// If given, it is between 0-9 (inclusive). Ignored when --no-compress is given. Default to 6
     pub xz_preset: Option<u32>,
-}
-
-#[derive(Debug, Clone)]
-/// Metadata for the encrypted file.
-pub struct Metadata {
-    compression_enabled: bool,
-    salt: [u8; 32],
-    nonce_dek: Nonce,
-    nonce_body: Nonce,
-    encrypted_dek: [u8; 48],
 }
 
 /// Create a new encrypted file in the given path.
@@ -79,7 +71,7 @@ pub fn create(args: &CreateArgs) -> Result<(), Box<dyn std::error::Error>> {
     let mut rng = rand::rngs::StdRng::from_entropy();
     let salt: [u8; 32] = rng.gen();
     let nonce_dek = Nonce::from(rng.gen::<[u8; 12]>());
-    let nonce_body = Nonce::from(rng.gen::<[u8; 12]>());
+    let nonce_body = rng.gen::<[u8; 12]>();
 
     // derive the key encryption key (KEK)
     let kek = prompt_for_password_and_derive_kek(&salt)?;
@@ -98,7 +90,7 @@ pub fn create(args: &CreateArgs) -> Result<(), Box<dyn std::error::Error>> {
     let md = Metadata {
         compression_enabled: !args.no_compress,
         salt,
-        nonce_dek,
+        nonce_dek: nonce_dek.into(),
         nonce_body,
         encrypted_dek,
     };
@@ -117,10 +109,11 @@ pub fn create(args: &CreateArgs) -> Result<(), Box<dyn std::error::Error>> {
 /// Write the header of the encrypted file.
 fn write_header(
     writer: &mut impl io::Write,
-    args: &CreateArgs,
+    header: &Header,
 ) -> io::Result<()> {
-    writer.write_all(b"0.1\nencrypted-file-format\n")?;
-    writeln!(writer, "{}", args.extension.as_deref().unwrap_or(""))?;
+    writeln!(writer, "{}", header.version)?;
+    writeln!(writer, "{}", header.format_marker)?;
+    writeln!(writer, "{}", header.extension)?;
     writer.write_all(b"\n")?;
     Ok(())
 }
