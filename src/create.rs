@@ -129,20 +129,8 @@ fn write_header(
 fn write_metadata(
     writer: &mut impl io::Write,
     md: &Metadata,
-) -> io::Result<()> {
-    // mark that plaintext file is compressed before encryption or not
-    if md.compression_enabled {
-        writer.write_all(&[1u8])?;
-    } else {
-        writer.write_all(&[0u8])?;
-    }
-
-    writer.write_all(&md.salt)?;
-    writer.write_all(&md.nonce_dek)?;
-    writer.write_all(&md.nonce_body)?;
-    writer.write_all(&md.encrypted_dek)?;
-
-    Ok(())
+) -> bincode::Result<()> {
+    bincode::serialize_into(writer, md)
 }
 
 /// Prompt the user for a password and derive the key encryption key (KEK) using Argon2id.

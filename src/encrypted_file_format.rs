@@ -64,3 +64,8 @@ pub struct Metadata {
     #[serde(with = "BigArray")]
     pub encrypted_dek: [u8; 48],
 }
+
+impl Metadata {
+    /// Memory size of the metadata in bytes
+    pub const SIZE: usize = 105;
+}
