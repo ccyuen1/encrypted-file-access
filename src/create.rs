@@ -113,7 +113,6 @@ pub fn create(args: &CreateArgs) -> anyhow::Result<()> {
     };
     write_metadata(&mut out_file, &md)?;
 
-    // encrypt the file body and store to output file
     if let Some(src) = args.src.as_ref() {
         // prepare for the file body encryption
         let encryptor: EncryptorBE32<Aes256GcmSiv> =
@@ -134,10 +133,7 @@ pub fn create(args: &CreateArgs) -> anyhow::Result<()> {
     }
     out_file.flush()?;
 
-    // TODO: simple verification of the integrity of the encrypted file
-    // out_file
-
-    todo!()
+    Ok(())
 }
 
 /// Write the header of the encrypted file.
@@ -190,8 +186,9 @@ fn encrypt_file_body(
     const TAG_SIZE: usize = AES256GCMSIV_TAG_SIZE;
 
     let mut in_buffer = [0u8; BUFFER_LEN];
+    let mut read_len;
     loop {
-        let mut read_len = reader.read(&mut in_buffer)?;
+        read_len = reader.read(&mut in_buffer)?;
         while read_len > 0 && read_len < BUFFER_LEN {
             read_len += reader.read(&mut in_buffer[read_len..])?;
         }
@@ -201,6 +198,8 @@ fn encrypt_file_body(
         let ciphertext = encryptor
             .encrypt_next(in_buffer.as_slice())
             .with_context(|| "Failed to encrypt file body")?;
+
+        // check the length of the ciphertext
         if ciphertext.len() != BUFFER_LEN + TAG_SIZE {
             bail!(
                 "Unexpected ciphertext chunk with length {}, expected {}",
@@ -208,12 +207,24 @@ fn encrypt_file_body(
                 BUFFER_LEN + TAG_SIZE
             );
         }
+
         writer.write_all(&ciphertext)?;
     }
+
+    // last chunk of data needs a different method
     let ciphertext = encryptor
-        .encrypt_last(in_buffer.as_slice())
+        .encrypt_last(&in_buffer[..read_len])
         .with_context(|| "Failed to encrypt last chunk of file body")?;
+    // check the length of the ciphertext
+    if ciphertext.len() != read_len + TAG_SIZE {
+        bail!(
+            "Unexpected ciphertext chunk with length {}, expected {}",
+            ciphertext.len(),
+            BUFFER_LEN + TAG_SIZE
+        );
+    }
     writer.write_all(&ciphertext)?;
+
     Ok(())
 }
 
