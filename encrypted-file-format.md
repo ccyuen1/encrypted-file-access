@@ -40,4 +40,4 @@ The metadata section has a fixed size. It stores the metadata in the following o
 
 ## Body
 
-The ciphertext of the file content. The plaintext is encrypted by streaming encryption with [aead::stream::EncryptorBE32](https://docs.rs/aead/latest/aead/stream/type.EncryptorBE32.html) with the DEK, the nonce for body, and AES-GCM-SIV.
+The ciphertext of the file content. The plaintext is encrypted by streaming encryption with [aead::stream::EncryptorBE32](https://docs.rs/aead/0.5.2/aead/stream/type.EncryptorBE32.html) with the DEK, the nonce for body, and AES-GCM-SIV.
