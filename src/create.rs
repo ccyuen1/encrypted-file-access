@@ -5,6 +5,7 @@ use std::{
 };
 
 use aes_gcm_siv::{aead::Aead, Aes256GcmSiv, Key, KeyInit, Nonce};
+use anyhow::bail;
 use argon2::{Algorithm, Argon2, Params, Version};
 use clap::Args;
 use either::Either::{Left, Right};
@@ -56,11 +57,11 @@ pub struct CreateArgs {
 ///    no_compress: true,
 ///    })?;
 /// ```
-pub fn create(args: &CreateArgs) -> Result<(), Box<dyn std::error::Error>> {
+pub fn create(args: &CreateArgs) -> anyhow::Result<()> {
     // check if the source file exists
     if let Some(src) = args.src.as_ref() {
         if !src.try_exists()? {
-            return Err("Source file does not exist".into());
+            bail!("Source file does not exist");
         }
     }
     // open the output file
@@ -152,7 +153,7 @@ fn write_metadata(
 /// Prompt the user for a password and derive the key encryption key (KEK) using Argon2id.
 fn prompt_for_password_and_derive_kek(
     salt: &[u8],
-) -> Result<Key<Aes256GcmSiv>, Box<dyn std::error::Error>> {
+) -> anyhow::Result<Key<Aes256GcmSiv>> {
     let argon2 = argon2_config();
 
     // create a KEK buffer

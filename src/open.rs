@@ -14,6 +14,6 @@ pub struct OpenArgs {
     pub executable: Option<PathBuf>,
 }
 
-pub fn open(args: &OpenArgs) -> Result<(), Box<dyn std::error::Error>> {
+pub fn open(args: &OpenArgs) -> anyhow::Result<()> {
     todo!()
 }

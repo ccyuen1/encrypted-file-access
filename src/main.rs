@@ -5,7 +5,7 @@ use encrypted_file_access::{
     create, open,
 };
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> anyhow::Result<()> {
     env_logger::init();
 
     let cli = Cli::parse();
