@@ -27,6 +27,10 @@ pub struct CreateArgs {
     #[arg(long)]
     /// If given, the plaintext file is not compressed before encryption
     pub no_compress: bool,
+
+    #[arg(short, long)]
+    /// If given, it is between 0-9 (inclusive). Ignored when --no-compress is given. Default to 6
+    pub xz_preset: Option<u32>,
 }
 
 #[derive(Debug, Clone)]
