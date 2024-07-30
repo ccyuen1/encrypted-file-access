@@ -6,6 +6,7 @@ use std::{
 
 use aes_gcm_siv::{aead::Aead, Aes256GcmSiv, Key, KeyInit, Nonce};
 use argon2::{Algorithm, Argon2, Params, Version};
+use bincode::Options;
 use clap::Args;
 use rand::{Rng, SeedableRng};
 use zeroize::Zeroize;
@@ -157,4 +158,44 @@ fn prompt_for_password_and_derive_kek(
     password.zeroize();
 
     Ok(kek)
+}
+
+#[cfg(test)]
+mod tests {
+
+    use crate::encrypted_file_format::{
+        DEFAULT_EXTENSION, DEFAULT_FORMAT_MARKER, DEFAULT_FORMAT_VERSION,
+    };
+
+    use super::*;
+
+    #[test]
+    fn test_write_header() {
+        let header = Header::default();
+        let mut buf = Vec::new();
+        write_header(&mut buf, &header).unwrap();
+        let expected_csv = format!(
+            "{},{},{}\n",
+            DEFAULT_FORMAT_VERSION, DEFAULT_FORMAT_MARKER, DEFAULT_EXTENSION
+        );
+        assert_eq!(buf, expected_csv.as_bytes());
+    }
+
+    #[test]
+    fn test_write_metadata() {
+        let mut rng = rand::thread_rng();
+        for _ in 0..3 {
+            let md = Metadata {
+                compression_enabled: rng.gen(),
+                salt: rng.gen(),
+                nonce_dek: rng.gen(),
+                nonce_body: rng.gen(),
+                encrypted_dek: core::array::from_fn(|_| rng.gen()),
+            };
+            let mut buf = Vec::new();
+            write_metadata(&mut buf, &md).unwrap();
+            assert_eq!(buf.len(), Metadata::SIZE);
+            assert_eq!(bincode::deserialize::<Metadata>(&buf).unwrap(), md);
+        }
+    }
 }

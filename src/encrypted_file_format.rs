@@ -1,12 +1,12 @@
 // Default values for the header
-const DEFAULT_FORMAT_VERSION: &str = "0.1";
-const DEFAULT_FORMAT_MARKER: &str = "encrypted-file-access";
-const DEFAULT_EXTENSION: &str = "txt";
+pub const DEFAULT_FORMAT_VERSION: &str = "0.1";
+pub const DEFAULT_FORMAT_MARKER: &str = "encrypted-file-access";
+pub const DEFAULT_EXTENSION: &str = "txt";
 
 use serde::{Deserialize, Serialize};
 use serde_big_array::BigArray;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 /// Header of the encrypted file. See [`HeaderBuilder`] for building from default values.
 pub struct Header<'a> {
     pub version: &'a str,
@@ -53,7 +53,7 @@ impl<'a> HeaderBuilder<'a> {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 /// Metadata for the encrypted file
 pub struct Metadata {
     pub compression_enabled: bool,
