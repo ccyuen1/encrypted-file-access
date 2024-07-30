@@ -115,16 +115,14 @@ pub fn create(args: &CreateArgs) -> Result<(), Box<dyn std::error::Error>> {
 fn write_header(
     writer: &mut impl io::Write,
     header: &Header,
-) -> io::Result<()> {
-    let mut csv_writer = csv::WriterBuilder::new()
+) -> csv::Result<()> {
+    csv::WriterBuilder::new()
         .has_headers(false)
         .delimiter(b',')
         .terminator(csv::Terminator::Any(b'\n'))
         .quote_style(csv::QuoteStyle::Necessary)
-        .from_writer(writer);
-    csv_writer.serialize(header)?;
-
-    Ok(())
+        .from_writer(writer)
+        .serialize(header)
 }
 
 /// Write the metadata section to the writer.
