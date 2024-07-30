@@ -10,7 +10,7 @@ use clap::Args;
 use rand::{Rng, SeedableRng};
 use zeroize::Zeroize;
 
-use crate::encrypted_file_format::{Header, Metadata};
+use crate::encrypted_file_format::{Header, HeaderBuilder, Metadata};
 
 #[derive(Args, Debug)]
 /// Arguments for creating a new encrypted file
@@ -65,7 +65,12 @@ pub fn create(args: &CreateArgs) -> Result<(), Box<dyn std::error::Error>> {
         .open(&args.out_file)?;
 
     // write the header to the file
-    write_header(&mut out_file, args)?;
+    let mut header_builder = HeaderBuilder::new();
+    if let Some(ext) = args.extension.as_deref() {
+        header_builder = header_builder.extension(ext);
+    }
+    let header = header_builder.build();
+    write_header(&mut out_file, &header)?;
 
     // generate random numbers that will be stored in plaintext
     let mut rng = rand::rngs::StdRng::from_entropy();
@@ -111,10 +116,14 @@ fn write_header(
     writer: &mut impl io::Write,
     header: &Header,
 ) -> io::Result<()> {
-    writeln!(writer, "{}", header.version)?;
-    writeln!(writer, "{}", header.format_marker)?;
-    writeln!(writer, "{}", header.extension)?;
-    writer.write_all(b"\n")?;
+    let mut csv_writer = csv::WriterBuilder::new()
+        .has_headers(false)
+        .delimiter(b',')
+        .terminator(csv::Terminator::Any(b'\n'))
+        .quote_style(csv::QuoteStyle::Necessary)
+        .from_writer(writer);
+    csv_writer.serialize(header)?;
+
     Ok(())
 }
 

@@ -7,11 +7,50 @@ use serde::{Deserialize, Serialize};
 use serde_big_array::BigArray;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-/// Header of the encrypted file
+/// Header of the encrypted file. See [`HeaderBuilder`] for building from default values.
 pub struct Header<'a> {
     pub version: &'a str,
     pub format_marker: &'a str,
     pub extension: &'a str,
+}
+
+impl Default for Header<'_> {
+    fn default() -> Self {
+        Header {
+            version: DEFAULT_FORMAT_VERSION,
+            format_marker: DEFAULT_FORMAT_MARKER,
+            extension: DEFAULT_EXTENSION,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+/// Builder for the [`Header`] of the encrypted file.
+pub struct HeaderBuilder<'a>(Header<'a>);
+
+impl<'a> HeaderBuilder<'a> {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn version(mut self, version: &'a str) -> Self {
+        self.0.version = version;
+        self
+    }
+
+    pub fn format_marker(mut self, format_marker: &'a str) -> Self {
+        self.0.format_marker = format_marker;
+        self
+    }
+
+    pub fn extension(mut self, extension: &'a str) -> Self {
+        self.0.extension = extension;
+        self
+    }
+
+    pub fn build(self) -> Header<'a> {
+        self.0
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,14 +63,4 @@ pub struct Metadata {
 
     #[serde(with = "BigArray")]
     pub encrypted_dek: [u8; 48],
-}
-
-impl Default for Header<'_> {
-    fn default() -> Self {
-        Header {
-            version: DEFAULT_FORMAT_VERSION,
-            format_marker: DEFAULT_FORMAT_MARKER,
-            extension: DEFAULT_EXTENSION,
-        }
-    }
 }
