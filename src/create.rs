@@ -4,17 +4,22 @@ use std::{
     path::PathBuf,
 };
 
-use aes_gcm_siv::{aead::Aead, Aes256GcmSiv, Key, KeyInit, Nonce};
-use anyhow::bail;
-use argon2::{Algorithm, Argon2, Params, Version};
+use aes_gcm_siv::{
+    aead::{stream::EncryptorBE32, Aead as _},
+    Aes256GcmSiv, Key, KeyInit, Nonce,
+};
+use anyhow::{bail, Context};
 use clap::Args;
 use either::Either::{Left, Right};
-use rand::{Rng, SeedableRng};
+use rand::{Rng as _, SeedableRng as _};
 use xz2::bufread::XzEncoder;
-use zeroize::Zeroize;
+use zeroize::Zeroize as _;
 
 use crate::{
-    config::{argon2_config, csv_writer_builder},
+    config::{
+        argon2_config, csv_writer_builder,
+        AEAD_STREAM_ENCRYPTION_BUFFER_LENGTH, AES256GCMSIV_TAG_SIZE,
+    },
     encrypted_file_format::{Header, HeaderBuilder, Metadata},
 };
 
@@ -82,16 +87,17 @@ pub fn create(args: &CreateArgs) -> anyhow::Result<()> {
     let mut rng = rand::rngs::StdRng::from_entropy();
     let salt: [u8; 32] = rng.gen();
     let nonce_dek = Nonce::from(rng.gen::<[u8; 12]>());
-    let nonce_body = rng.gen::<[u8; 12]>();
+    let nonce_body = rng.gen();
 
     // derive the key encryption key (KEK)
-    let kek = prompt_for_password_and_derive_kek(&salt)?;
+    let mut kek = prompt_for_password_and_derive_kek(&salt)?;
 
     // generate the data encryption key (DEK)
     let mut dek = Key::<Aes256GcmSiv>::from(rng.gen::<[u8; 32]>());
 
     // encrypt the DEK using KEK
     let cipher = Aes256GcmSiv::new(&kek);
+    kek.zeroize(); // done with KEK
     let encrypted_dek = cipher
         .encrypt(&nonce_dek, dek.as_ref())?
         .try_into()
@@ -107,12 +113,12 @@ pub fn create(args: &CreateArgs) -> anyhow::Result<()> {
     };
     write_metadata(&mut out_file, &md)?;
 
-    // encrypt the file content and store to output file
+    // encrypt the file body and store to output file
     if let Some(src) = args.src.as_ref() {
         // prepare for the file body encryption
-        let non_dek = Nonce::from(md.nonce_dek);
-        let cipher = Aes256GcmSiv::new(&dek);
-        dek.zeroize();
+        let encryptor: EncryptorBE32<Aes256GcmSiv> =
+            EncryptorBE32::new(&dek, &nonce_body.into());
+        dek.zeroize(); // done with DEK
 
         // get handler of the source file if specified
         let reader = io::BufReader::new(File::open(src)?);
@@ -124,12 +130,12 @@ pub fn create(args: &CreateArgs) -> anyhow::Result<()> {
             Right(reader)
         };
 
-        // encrypt the file body
+        encrypt_file_body(encryptor, &mut reader, &mut out_file)?;
     }
-
     out_file.flush()?;
 
-    // TODO: verify the integrity of the encrypted file
+    // TODO: simple verification of the integrity of the encrypted file
+    // out_file
 
     todo!()
 }
@@ -171,6 +177,46 @@ fn prompt_for_password_and_derive_kek(
     Ok(kek)
 }
 
+/// Encrypt the content from the reader and write to the writer.  
+/// If error is encounted, the status of the writer is undefined.
+fn encrypt_file_body(
+    mut encryptor: EncryptorBE32<Aes256GcmSiv>,
+    reader: &mut impl io::Read,
+    writer: &mut impl io::Write,
+) -> anyhow::Result<()> {
+    const BUFFER_LEN: usize = AEAD_STREAM_ENCRYPTION_BUFFER_LENGTH;
+
+    // for Aes256, need to change it if other AEAD primitive is used
+    const TAG_SIZE: usize = AES256GCMSIV_TAG_SIZE;
+
+    let mut in_buffer = [0u8; BUFFER_LEN];
+    loop {
+        let mut read_len = reader.read(&mut in_buffer)?;
+        while read_len > 0 && read_len < BUFFER_LEN {
+            read_len += reader.read(&mut in_buffer[read_len..])?;
+        }
+        if read_len < BUFFER_LEN {
+            break;
+        }
+        let ciphertext = encryptor
+            .encrypt_next(in_buffer.as_slice())
+            .with_context(|| "Failed to encrypt file body")?;
+        if ciphertext.len() != BUFFER_LEN + TAG_SIZE {
+            bail!(
+                "Unexpected ciphertext chunk with length {}, expected {}",
+                ciphertext.len(),
+                BUFFER_LEN + TAG_SIZE
+            );
+        }
+        writer.write_all(&ciphertext)?;
+    }
+    let ciphertext = encryptor
+        .encrypt_last(in_buffer.as_slice())
+        .with_context(|| "Failed to encrypt last chunk of file body")?;
+    writer.write_all(&ciphertext)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -208,5 +254,10 @@ mod tests {
             assert_eq!(buf.len(), Metadata::SIZE);
             assert_eq!(bincode::deserialize::<Metadata>(&buf).unwrap(), md);
         }
+    }
+
+    #[test]
+    fn test_encrypt_file_body() {
+        // TODO
     }
 }

@@ -59,7 +59,7 @@ pub struct Metadata {
     pub compression_enabled: bool,
     pub salt: [u8; 32],
     pub nonce_dek: [u8; 12],
-    pub nonce_body: [u8; 12],
+    pub nonce_body: [u8; 7],
 
     #[serde(with = "BigArray")]
     pub encrypted_dek: [u8; 48],
