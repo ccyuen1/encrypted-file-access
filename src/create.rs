@@ -12,7 +12,10 @@ use rand::{Rng, SeedableRng};
 use xz2::bufread::XzEncoder;
 use zeroize::Zeroize;
 
-use crate::encrypted_file_format::{Header, HeaderBuilder, Metadata};
+use crate::{
+    config::{argon2_config, csv_writer_builder},
+    encrypted_file_format::{Header, HeaderBuilder, Metadata},
+};
 
 #[derive(Args, Debug)]
 /// Arguments for creating a new encrypted file
@@ -121,7 +124,6 @@ pub fn create(args: &CreateArgs) -> Result<(), Box<dyn std::error::Error>> {
         };
 
         // encrypt the file body
-        
     }
 
     out_file.flush()?;
@@ -136,13 +138,7 @@ fn write_header(
     writer: &mut impl io::Write,
     header: &Header,
 ) -> csv::Result<()> {
-    csv::WriterBuilder::new()
-        .has_headers(false)
-        .delimiter(b',')
-        .terminator(csv::Terminator::Any(b'\n'))
-        .quote_style(csv::QuoteStyle::Necessary)
-        .from_writer(writer)
-        .serialize(header)
+    csv_writer_builder().from_writer(writer).serialize(header)
 }
 
 /// Write the metadata section to the writer.
@@ -157,12 +153,7 @@ fn write_metadata(
 fn prompt_for_password_and_derive_kek(
     salt: &[u8],
 ) -> Result<Key<Aes256GcmSiv>, Box<dyn std::error::Error>> {
-    let argon2 = Argon2::new(
-        Algorithm::Argon2id,
-        Version::V0x13,
-        Params::new(19_456u32, 2u32, 1u32, Some(32usize))
-            .expect("Failed to create Argon2 params"),
-    );
+    let argon2 = argon2_config();
 
     // create a KEK buffer
     let mut kek = Key::<Aes256GcmSiv>::from([0u8; 32]);
