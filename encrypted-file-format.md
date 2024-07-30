@@ -30,9 +30,9 @@ The metadata section has a fixed size. It stores the metadata in the following o
 
 2. The salt for key derivation function, i.e., Argon2id, in 32 bytes in plain binary format.
 
-3. The nonce, aka initialization vector (IV), for encryption algorithm, i.e., AES-GCM-SIV, in 12 bytes. This is used to encrypt the DEK.
+3. The nonce, aka initialization vector (IV), in 12 bytes for the encryption algorithm. This is used to encrypt the DEK.
 
-4. The nonce for AES-GCM-SIV in 12 bytes for the encryption of the body.
+4. The nonce in 12 bytes for the encryption of the body.
 
 5. The 48-byte ciphertext of the 256-bit data encryption key (DEK).
    It is encrypted by AES-GCM-SIV using the key encryption key (KEK) and the nonce for DEK.
@@ -40,4 +40,4 @@ The metadata section has a fixed size. It stores the metadata in the following o
 
 ## Body
 
-The ciphertext of the file content, after AES-GCM-SIV encryption with the DEK and the nonce for body.
+The ciphertext of the file content. The plaintext is encrypted by streaming encryption with [aead::stream::EncryptorBE32](https://docs.rs/aead/latest/aead/stream/type.EncryptorBE32.html) with the DEK, the nonce for body, and AES-GCM-SIV.
