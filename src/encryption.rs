@@ -1,6 +1,9 @@
 use std::io;
 
-use aes_gcm_siv::{aead::stream::EncryptorBE32, Aes256GcmSiv};
+use aes_gcm_siv::{
+    aead::stream::{DecryptorBE32, EncryptorBE32},
+    Aes256GcmSiv,
+};
 use anyhow::{bail, Context};
 
 use crate::config::{
@@ -9,7 +12,7 @@ use crate::config::{
 
 /// Encrypt the content from the reader and write to the writer.  
 /// If error is encounted, the status of the reader and writer are undefined.
-pub fn encrypt_file_body(
+pub fn stream_encrypt(
     mut encryptor: EncryptorBE32<Aes256GcmSiv>,
     reader: &mut impl io::Read,
     writer: &mut impl io::Write,
@@ -62,7 +65,13 @@ pub fn encrypt_file_body(
     Ok(())
 }
 
-pub fn decrypt_file_body() -> anyhow::Result<()> {
+/// Decrypt the content from the reader and write to the writer.  
+/// If error is encounted, the status of the reader and writer are undefined.
+pub fn stream_decrypt(
+    mut decryptor: DecryptorBE32<Aes256GcmSiv>,
+    reader: &mut impl io::Read,
+    writer: &mut impl io::Write,
+) -> anyhow::Result<()> {
     todo!()
 }
 

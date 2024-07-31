@@ -126,7 +126,7 @@ pub fn create(args: &CreateArgs) -> anyhow::Result<()> {
             Right(reader)
         };
 
-        crate::encryption::encrypt_file_body(
+        crate::encryption::stream_encrypt(
             encryptor,
             &mut reader,
             &mut out_file,
