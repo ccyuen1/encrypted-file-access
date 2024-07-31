@@ -67,5 +67,5 @@ pub struct Metadata {
 
 impl Metadata {
     /// Memory size of the metadata in bytes
-    pub const SIZE: usize = 105;
+    pub const SIZE: usize = 1 + 32 + 12 + 7 + 48;
 }
