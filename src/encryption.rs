@@ -10,6 +10,7 @@ use crate::config::{
     AEAD_STREAM_ENCRYPTION_BUFFER_LENGTH, AES256GCMSIV_TAG_SIZE,
 };
 
+// TODO: This function never ends during testing
 /// Encrypt the content from the reader and write to the writer.  
 /// If error is encounted, the status of the reader and writer are undefined.
 pub fn stream_encrypt(
@@ -22,7 +23,7 @@ pub fn stream_encrypt(
     // for Aes256, need to change it if other AEAD primitive is used
     const TAG_SIZE: usize = AES256GCMSIV_TAG_SIZE;
 
-    let mut in_buffer = [0u8; BUFFER_LEN];
+    let mut in_buffer = vec![0u8; BUFFER_LEN];
     let mut read_len;
     loop {
         read_len = reader.read(&mut in_buffer)?;
