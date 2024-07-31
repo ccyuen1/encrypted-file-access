@@ -75,9 +75,7 @@ pub fn create(args: &CreateArgs) -> anyhow::Result<()> {
         .open(&args.out_file)?;
 
     // write the header to the file
-    let mut header_builder = HeaderBuilder::new();
-    header_builder = header_builder.extension(get_extension(args)?);
-    let header = header_builder.build();
+    let header = HeaderBuilder::new().extension(get_extension(args)?).build();
     write_header(&mut out_file, &header)?;
 
     // generate random numbers that will be stored in plaintext
