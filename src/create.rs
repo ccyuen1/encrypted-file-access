@@ -8,7 +8,7 @@ use aes_gcm_siv::{
     aead::{stream::EncryptorBE32, Aead as _},
     Aes256GcmSiv, Key, KeyInit, Nonce,
 };
-use anyhow::{bail, Context};
+use anyhow::bail;
 use clap::Args;
 use either::Either::{Left, Right};
 use rand::{Rng as _, SeedableRng as _};
@@ -16,10 +16,7 @@ use xz2::bufread::XzEncoder;
 use zeroize::Zeroize as _;
 
 use crate::{
-    config::{
-        argon2_config, csv_writer_builder,
-        AEAD_STREAM_ENCRYPTION_BUFFER_LENGTH, AES256GCMSIV_TAG_SIZE,
-    },
+    config::{argon2_config, csv_writer_builder},
     encrypted_file_format::{Header, HeaderBuilder, Metadata},
 };
 
@@ -129,7 +126,11 @@ pub fn create(args: &CreateArgs) -> anyhow::Result<()> {
             Right(reader)
         };
 
-        encrypt_file_body(encryptor, &mut reader, &mut out_file)?;
+        crate::encryption::encrypt_file_body(
+            encryptor,
+            &mut reader,
+            &mut out_file,
+        )?;
     }
     out_file.flush()?;
 
@@ -173,61 +174,6 @@ fn prompt_for_password_and_derive_kek(
     Ok(kek)
 }
 
-/// Encrypt the content from the reader and write to the writer.  
-/// If error is encounted, the status of the writer is undefined.
-fn encrypt_file_body(
-    mut encryptor: EncryptorBE32<Aes256GcmSiv>,
-    reader: &mut impl io::Read,
-    writer: &mut impl io::Write,
-) -> anyhow::Result<()> {
-    const BUFFER_LEN: usize = AEAD_STREAM_ENCRYPTION_BUFFER_LENGTH;
-
-    // for Aes256, need to change it if other AEAD primitive is used
-    const TAG_SIZE: usize = AES256GCMSIV_TAG_SIZE;
-
-    let mut in_buffer = [0u8; BUFFER_LEN];
-    let mut read_len;
-    loop {
-        read_len = reader.read(&mut in_buffer)?;
-        while read_len > 0 && read_len < BUFFER_LEN {
-            read_len += reader.read(&mut in_buffer[read_len..])?;
-        }
-        if read_len < BUFFER_LEN {
-            break;
-        }
-        let ciphertext = encryptor
-            .encrypt_next(in_buffer.as_slice())
-            .with_context(|| "Failed to encrypt file body")?;
-
-        // check the length of the ciphertext
-        if ciphertext.len() != BUFFER_LEN + TAG_SIZE {
-            bail!(
-                "Unexpected ciphertext chunk with length {}, expected {}",
-                ciphertext.len(),
-                BUFFER_LEN + TAG_SIZE
-            );
-        }
-
-        writer.write_all(&ciphertext)?;
-    }
-
-    // last chunk of data needs a different method
-    let ciphertext = encryptor
-        .encrypt_last(&in_buffer[..read_len])
-        .with_context(|| "Failed to encrypt last chunk of file body")?;
-    // check the length of the ciphertext
-    if ciphertext.len() != read_len + TAG_SIZE {
-        bail!(
-            "Unexpected ciphertext chunk with length {}, expected {}",
-            ciphertext.len(),
-            BUFFER_LEN + TAG_SIZE
-        );
-    }
-    writer.write_all(&ciphertext)?;
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
 
@@ -265,10 +211,5 @@ mod tests {
             assert_eq!(buf.len(), Metadata::SIZE);
             assert_eq!(bincode::deserialize::<Metadata>(&buf).unwrap(), md);
         }
-    }
-
-    #[test]
-    fn test_encrypt_file_body() {
-        // TODO
     }
 }
