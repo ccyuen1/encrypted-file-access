@@ -16,6 +16,9 @@ pub const AES256GCMSIV_TAG_SIZE: usize =
 /// Buffer size for AES256-GCM-SIV stream decryption.
 pub const AES256GCMSIV_DECRYPTION_BUFFER_LENGTH: usize =
     AEAD_STREAM_ENCRYPTION_BUFFER_LENGTH + AES256GCMSIV_TAG_SIZE;
+
+/// Default file extension for the decrypted file.
+pub const DEFAULT_DECRYPTED_FILE_EXTENSION: &str = "txt";
 //
 //
 

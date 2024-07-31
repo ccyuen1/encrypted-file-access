@@ -8,7 +8,7 @@ use aes_gcm_siv::{
     aead::{stream::EncryptorBE32, Aead as _},
     Aes256GcmSiv, Key, KeyInit, Nonce,
 };
-use anyhow::bail;
+use anyhow::{anyhow, bail};
 use clap::Args;
 use either::Either::{Left, Right};
 use rand::{Rng as _, SeedableRng as _};
@@ -16,7 +16,9 @@ use xz2::bufread::XzEncoder;
 use zeroize::Zeroize as _;
 
 use crate::{
-    config::{argon2_config, csv_writer_builder},
+    config::{
+        argon2_config, csv_writer_builder, DEFAULT_DECRYPTED_FILE_EXTENSION,
+    },
     encrypted_file_format::{Header, HeaderBuilder, Metadata},
 };
 
@@ -31,16 +33,16 @@ pub struct CreateArgs {
     pub src: Option<PathBuf>,
 
     #[arg(short, long)]
-    /// Extension for the decrypted file. Overwitten by extension of src if provided. Default to txt
+    /// Extension for the decrypted file. Overwritten by extension of src if provided. Default: txt
     pub extension: Option<String>,
 
     #[arg(long)]
     /// If given, the plaintext file is not compressed before encryption
     pub no_compress: bool,
 
-    #[arg(short, long)]
-    /// If given, it is between 0-9 (inclusive). Ignored when --no-compress is given. Default to 6
-    pub xz_preset: Option<u32>,
+    #[arg(long, default_value_t = 6, value_parser = clap::value_parser!(u32).range(0..=9))]
+    /// Compression level of XZ algorithm. Valid values are 0-9. Ignored when --no-compress is given.
+    pub xz_level: u32,
 }
 
 /// Create a new encrypted file in the given path.
@@ -74,9 +76,7 @@ pub fn create(args: &CreateArgs) -> anyhow::Result<()> {
 
     // write the header to the file
     let mut header_builder = HeaderBuilder::new();
-    if let Some(ext) = args.extension.as_deref() {
-        header_builder = header_builder.extension(ext);
-    }
+    header_builder = header_builder.extension(get_extension(args)?);
     let header = header_builder.build();
     write_header(&mut out_file, &header)?;
 
@@ -121,7 +121,7 @@ pub fn create(args: &CreateArgs) -> anyhow::Result<()> {
 
         // compress the file body if compression is enabled
         let mut reader = if !args.no_compress {
-            Left(XzEncoder::new(reader, 6))
+            Left(XzEncoder::new(reader, args.xz_level))
         } else {
             Right(reader)
         };
@@ -172,6 +172,27 @@ fn prompt_for_password_and_derive_kek(
     password.zeroize();
 
     Ok(kek)
+}
+
+/// Extract the correct file extension from the command line arguments.  
+/// If not provided, [`DEFAULT_DECRYPTED_FILE_EXTENSION`] is returned.
+fn get_extension(args: &CreateArgs) -> anyhow::Result<&str> {
+    if let Some(src) = &args.src {
+        let ext = src
+            .extension()
+            .map(|e| {
+                e.to_str()
+                    .ok_or(anyhow!("Source extension is not valid Unicode"))
+            })
+            .transpose()?;
+        if let Some(e) = ext {
+            return Ok(e);
+        }
+    }
+    Ok(args
+        .extension
+        .as_deref()
+        .unwrap_or(DEFAULT_DECRYPTED_FILE_EXTENSION))
 }
 
 #[cfg(test)]
