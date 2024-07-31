@@ -29,7 +29,7 @@ pub fn argon2_config() -> Argon2<'static> {
     )
 }
 
-/// Create a default CSV [`WriterBuilder`] for our use.
+/// Create a default [`csv::WriterBuilder`] for our use.
 pub fn csv_writer_builder() -> csv::WriterBuilder {
     let mut builder = csv::WriterBuilder::new();
     builder
