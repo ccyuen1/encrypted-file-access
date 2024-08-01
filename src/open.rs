@@ -48,10 +48,10 @@ pub struct OpenArgs {
 /// open(&args).unwrap();
 /// ```
 pub fn open(args: &OpenArgs) -> anyhow::Result<()> {
-    let mut in_file = File::open(&args.file)?;
-    let header = read_header(&mut in_file)?;
+    let mut reader = io::BufReader::new(File::open(&args.file)?);
+    let header = read_header(&mut reader)?;
     let metadata: Metadata<Aes256GcmSiv, StreamBE32<_>> =
-        read_metadata(&mut in_file)?;
+        read_metadata(&mut reader)?;
 
     // TODO: prepare a temporary file
 
@@ -72,7 +72,7 @@ pub fn open(args: &OpenArgs) -> anyhow::Result<()> {
 
 /// Read and parse the header of an encrypted file.
 /// This will error if the header is invalid.
-fn read_header<R: BufRead>(reader: R) -> csv::Result<(Header, R)> {
+fn read_header<R: BufRead>(reader: R) -> csv::Result<Header> {
     // Read the byte array of the header.
     // This is to ensure that the CSV reader cannot read past the end of the header.
     let mut take_reader = reader.take(MAX_HEADER_SIZE);
@@ -96,7 +96,7 @@ fn read_header<R: BufRead>(reader: R) -> csv::Result<(Header, R)> {
         .next()
         .ok_or(io::Error::from(io::ErrorKind::InvalidData))??;
 
-    Ok((header, take_reader.into_inner()))
+    Ok(header)
 }
 
 /// Read and parse the metadata section of an encrypted file.
