@@ -38,6 +38,18 @@ pub fn csv_writer_builder() -> csv::WriterBuilder {
         .has_headers(false)
         .delimiter(b',')
         .terminator(csv::Terminator::Any(b'\n'))
-        .quote_style(csv::QuoteStyle::Necessary);
+        .quote_style(csv::QuoteStyle::Necessary)
+        .buffer_capacity(MAX_HEADER_SIZE as usize);
+    builder
+}
+
+/// Create a default [`csv::ReaderBuilder`] for our use.
+pub fn csv_reader_builder() -> csv::ReaderBuilder {
+    let mut builder = csv::ReaderBuilder::new();
+    builder
+        .has_headers(false)
+        .delimiter(b',')
+        .terminator(csv::Terminator::Any(b'\n'))
+        .buffer_capacity(MAX_HEADER_SIZE as usize);
     builder
 }
