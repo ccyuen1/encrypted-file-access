@@ -1,10 +1,20 @@
+use std::ops::{Add, Sub};
+
+use aead::{stream::StreamPrimitive, AeadInPlace, KeySizeUser};
+use derive_where::derive_where;
+use generic_array::{
+    typenum::{operator_aliases::Sum, Unsigned},
+    ArrayLength, GenericArray,
+};
+use serde::{Deserialize, Serialize};
+
 // Default values for the header
 pub const DEFAULT_FORMAT_VERSION: &str = "0.1";
 pub const DEFAULT_FORMAT_MARKER: &str = "encrypted-file-access";
 pub const DEFAULT_EXTENSION: &str = "txt";
 
-use serde::{Deserialize, Serialize};
-use serde_big_array::BigArray;
+// Constants for the metadata section
+pub const SALT_SIZE: usize = 32;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 /// Header of the encrypted file. See [`HeaderBuilder`] for building from default values.
@@ -53,19 +63,69 @@ impl<'a> HeaderBuilder<'a> {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive_where(Debug, PartialEq, Eq)]
+#[derive(Clone, Serialize, Deserialize)]
 /// Metadata for the encrypted file
-pub struct Metadata {
+pub struct Metadata<A, S>
+where
+    A: AeadInPlace + KeySizeUser,
+    S: StreamPrimitive<A>,
+    A::NonceSize: Sub<S::NonceOverhead>,
+    aead::stream::NonceSize<A, S>: ArrayLength<u8>,
+    A::KeySize: Add<A::TagSize>,
+    <A::KeySize as Add<A::TagSize>>::Output: ArrayLength<u8>,
+{
     pub compression_enabled: bool,
-    pub salt: [u8; 32],
-    pub nonce_dek: [u8; 12],
-    pub nonce_body: [u8; 7],
+    pub salt: [u8; SALT_SIZE],
 
-    #[serde(with = "BigArray")]
-    pub encrypted_dek: [u8; 48],
+    #[serde(bound(
+        serialize = "aead::Nonce<A>: Serialize",
+        deserialize = "aead::Nonce<A>: Deserialize<'de>"
+    ))]
+    pub nonce_dek: aead::Nonce<A>,
+
+    #[serde(bound(
+        serialize = "aead::stream::Nonce<A, S>: Serialize",
+        deserialize = "aead::stream::Nonce<A, S>: Deserialize<'de>"
+    ))]
+    pub nonce_body: aead::stream::Nonce<A, S>,
+
+    #[serde(bound(
+        serialize = "GenericArray<u8, Sum<A::KeySize, A::TagSize>>: Serialize",
+        deserialize = "GenericArray<u8, Sum<A::KeySize, A::TagSize>>: Deserialize<'de>"
+    ))]
+    pub encrypted_dek: GenericArray<u8, Sum<A::KeySize, A::TagSize>>,
 }
 
-impl Metadata {
+impl<A, S> Metadata<A, S>
+where
+    A: AeadInPlace + KeySizeUser,
+    S: StreamPrimitive<A>,
+    A::NonceSize: Sub<S::NonceOverhead>,
+    aead::stream::NonceSize<A, S>: ArrayLength<u8>,
+    A::KeySize: Add<A::TagSize>,
+    <A::KeySize as Add<A::TagSize>>::Output: ArrayLength<u8>,
+{
     /// Memory size of the metadata in bytes
-    pub const SIZE: usize = 1 + 32 + 12 + 7 + 48;
+    pub const SIZE: usize = 1
+        + SALT_SIZE
+        + A::NonceSize::USIZE
+        + aead::stream::NonceSize::<A, S>::USIZE
+        + Sum::<A::KeySize, A::TagSize>::USIZE;
+}
+
+#[cfg(test)]
+mod tests {
+    use aead::stream::StreamBE32;
+    use aes_gcm_siv::Aes256GcmSiv;
+
+    use super::*;
+
+    #[test]
+    fn test_metadata_size() {
+        assert_eq!(
+            Metadata::<Aes256GcmSiv, StreamBE32<Aes256GcmSiv>>::SIZE,
+            1 + SALT_SIZE + 12 + 7 + 48
+        );
+    }
 }

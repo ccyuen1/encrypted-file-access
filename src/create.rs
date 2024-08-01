@@ -1,16 +1,19 @@
 use std::{
     fs::{File, OpenOptions},
     io::{self, Write},
+    ops::{Add, Sub},
     path::PathBuf,
 };
 
-use aes_gcm_siv::{
-    aead::{stream::EncryptorBE32, Aead as _},
-    Aes256GcmSiv, Key, KeyInit, Nonce,
+use aead::{
+    stream::{EncryptorBE32, StreamBE32, StreamPrimitive},
+    Aead as _, KeySizeUser,
 };
+use aes_gcm_siv::{AeadInPlace, Aes256GcmSiv, Key, KeyInit};
 use anyhow::{anyhow, bail};
 use clap::Args;
 use either::Either::{Left, Right};
+use generic_array::ArrayLength;
 use rand::{Rng as _, SeedableRng as _};
 use xz2::bufread::XzEncoder;
 use zeroize::Zeroize as _;
@@ -81,8 +84,8 @@ pub fn create(args: &CreateArgs) -> anyhow::Result<()> {
     // generate random numbers that will be stored in plaintext
     let mut rng = rand::rngs::StdRng::from_entropy();
     let salt: [u8; 32] = rng.gen();
-    let nonce_dek = Nonce::from(rng.gen::<[u8; 12]>());
-    let nonce_body = rng.gen();
+    let nonce_dek = rng.gen::<[u8; 12]>().into();
+    let nonce_body = rng.gen::<[u8; 7]>().into();
 
     // derive the key encryption key (KEK)
     let mut kek = prompt_for_password_and_derive_kek(&salt)?;
@@ -93,16 +96,17 @@ pub fn create(args: &CreateArgs) -> anyhow::Result<()> {
     // encrypt the DEK using KEK
     let cipher = Aes256GcmSiv::new(&kek);
     kek.zeroize(); // done with KEK
-    let encrypted_dek = cipher
+    let encrypted_dek: [u8; 48] = cipher
         .encrypt(&nonce_dek, dek.as_ref())?
         .try_into()
         .expect("The encrypted data encryption key should be 48 bytes long");
+    let encrypted_dek = encrypted_dek.into();
 
     // write the metadata section to the file
-    let md = Metadata {
+    let md: Metadata<Aes256GcmSiv, StreamBE32<_>> = Metadata {
         compression_enabled: !args.no_compress,
         salt,
-        nonce_dek: nonce_dek.into(),
+        nonce_dek,
         nonce_body,
         encrypted_dek,
     };
@@ -111,7 +115,7 @@ pub fn create(args: &CreateArgs) -> anyhow::Result<()> {
     if let Some(src) = args.src.as_ref() {
         // prepare for the file body encryption
         let encryptor: EncryptorBE32<Aes256GcmSiv> =
-            EncryptorBE32::new(&dek, &nonce_body.into());
+            EncryptorBE32::new(&dek, &nonce_body);
         dek.zeroize(); // done with DEK
 
         // get handler of the source file if specified
@@ -144,10 +148,18 @@ fn write_header(
 }
 
 /// Write the metadata section to the writer.
-fn write_metadata(
+fn write_metadata<A, S>(
     writer: &mut impl io::Write,
-    md: &Metadata,
-) -> bincode::Result<()> {
+    md: &Metadata<A, S>,
+) -> bincode::Result<()>
+where
+    A: AeadInPlace + KeySizeUser,
+    S: StreamPrimitive<A>,
+    A::NonceSize: Sub<S::NonceOverhead>,
+    aead::stream::NonceSize<A, S>: ArrayLength<u8>,
+    A::KeySize: Add<A::TagSize>,
+    <A::KeySize as Add<A::TagSize>>::Output: ArrayLength<u8>,
+{
     bincode::serialize_into(writer, md)
 }
 
@@ -218,17 +230,26 @@ mod tests {
     fn test_write_metadata() {
         let mut rng = rand::thread_rng();
         for _ in 0..3 {
-            let md = Metadata {
+            let md: Metadata<Aes256GcmSiv, StreamBE32<_>> = Metadata {
                 compression_enabled: rng.gen(),
                 salt: rng.gen(),
-                nonce_dek: rng.gen(),
-                nonce_body: rng.gen(),
-                encrypted_dek: core::array::from_fn(|_| rng.gen()),
+                nonce_dek: rng.gen::<[u8; 12]>().into(),
+                nonce_body: rng.gen::<[u8; 7]>().into(),
+                encrypted_dek: std::array::from_fn(|_| rng.gen()).into(),
             };
             let mut buf = Vec::new();
             write_metadata(&mut buf, &md).unwrap();
-            assert_eq!(buf.len(), Metadata::SIZE);
-            assert_eq!(bincode::deserialize::<Metadata>(&buf).unwrap(), md);
+            assert_eq!(
+                buf.len(),
+                Metadata::<Aes256GcmSiv, StreamBE32<_>>::SIZE
+            );
+            assert_eq!(
+                bincode::deserialize::<Metadata<Aes256GcmSiv, StreamBE32<_>>>(
+                    &buf
+                )
+                .unwrap(),
+                md
+            );
         }
     }
 }
