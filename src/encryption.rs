@@ -138,7 +138,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_stream_encrypt_decrypt() {
+    fn test_stream_encrypt_decrypt_small() {
         let plaintext = "savuduasb v\u{2144} ua cab2 cuancnacungyeucgnau";
         let key = b"qwertyuiopasdfghjklzxcvbnmasdfgh";
         let nonce = b"asithyd";
@@ -153,5 +153,28 @@ mod tests {
         stream_decrypt(decryptor, &mut encrypted.as_slice(), &mut decrypted)
             .unwrap();
         assert_eq!(plaintext.as_bytes(), decrypted);
+    }
+
+    #[test]
+    fn test_stream_encrypt_decrypt_large() {
+        use rand::Rng;
+
+        let mut rng = rand::thread_rng();
+        let plaintext: Vec<u8> = std::iter::from_fn(|| Some(rng.gen::<u8>()))
+            .take(1024 * 1024 * 5)
+            .collect();
+        let key = b"qwertyuiopasdfghjklzxcvbnmasdfgh";
+        let nonce = b"asithyd";
+        let encryptor: EncryptorBE32<Aes256GcmSiv> =
+            EncryptorBE32::new(key.into(), nonce.into());
+        let decryptor: DecryptorBE32<Aes256GcmSiv> =
+            DecryptorBE32::new(key.into(), nonce.into());
+        let mut encrypted = Vec::new();
+        stream_encrypt(encryptor, &mut plaintext.as_slice(), &mut encrypted)
+            .unwrap();
+        let mut decrypted = Vec::new();
+        stream_decrypt(decryptor, &mut encrypted.as_slice(), &mut decrypted)
+            .unwrap();
+        assert_eq!(plaintext, decrypted);
     }
 }
