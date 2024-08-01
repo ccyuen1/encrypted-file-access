@@ -1,7 +1,9 @@
 use std::ops::{Add, Sub};
 
 use aead::{stream::StreamPrimitive, AeadInPlace, KeySizeUser};
+use bytes::Bytes;
 use derive_where::derive_where;
+use either::Either;
 use generic_array::{
     typenum::{operator_aliases::Sum, Unsigned},
     ArrayLength, GenericArray,
@@ -18,47 +20,51 @@ pub const SALT_SIZE: usize = 32;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 /// Header of the encrypted file. See [`HeaderBuilder`] for building from default values.
-pub struct Header<'a> {
-    pub version: &'a str,
-    pub format_marker: &'a str,
-    pub extension: &'a str,
+pub struct Header {
+    pub version: Bytes,
+    pub format_marker: Bytes,
+    pub extension: Bytes,
 }
 
-impl Default for Header<'_> {
+impl Default for Header {
     fn default() -> Self {
         Header {
-            version: DEFAULT_FORMAT_VERSION,
-            format_marker: DEFAULT_FORMAT_MARKER,
-            extension: DEFAULT_EXTENSION,
+            version: Bytes::from(DEFAULT_FORMAT_VERSION),
+            format_marker: Bytes::from(DEFAULT_FORMAT_MARKER),
+            extension: Bytes::from(DEFAULT_EXTENSION),
         }
     }
 }
 
 #[derive(Debug, Clone, Default)]
 /// Builder for the [`Header`] of the encrypted file.
-pub struct HeaderBuilder<'a>(Header<'a>);
+pub struct HeaderBuilder(Header);
 
-impl<'a> HeaderBuilder<'a> {
+impl HeaderBuilder {
     pub fn new() -> Self {
         Self::default()
     }
 
-    pub fn version(mut self, version: &'a str) -> Self {
-        self.0.version = version;
+    pub fn version<'a>(mut self, version: Either<String, &'a str>) -> Self {
+        self.0.version = either::for_both!(version, s => Bytes::from(s));
         self
     }
 
-    pub fn format_marker(mut self, format_marker: &'a str) -> Self {
-        self.0.format_marker = format_marker;
+    pub fn format_marker<'a>(
+        mut self,
+        format_marker: Either<String, &'a str>,
+    ) -> Self {
+        self.0.format_marker =
+            either::for_both!(format_marker, s => Bytes::from(s));
         self
     }
 
-    pub fn extension(mut self, extension: &'a str) -> Self {
-        self.0.extension = extension;
+    pub fn extension<'a>(mut self, extension: Either<String, &'a str>) -> Self {
+        self.0.extension = either::for_both!(extension, s => Bytes::from(s));
         self
     }
 
-    pub fn build(self) -> Header<'a> {
+    pub fn build(self) -> Header {
         self.0
     }
 }
