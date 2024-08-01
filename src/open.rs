@@ -55,9 +55,13 @@ pub fn open(args: &OpenArgs) -> anyhow::Result<()> {
 
     // TODO: open the decrypted file with the specified application
 
-    // TODO: after the application terminates, write modifications back to the file
+    // TODO: after the application terminates,
+    //       create a new password-protected file alongside the original file
+    //       reflecting the modifications made to the temporary file
 
-    // TODO: clean up the temporary file
+    // TODO: clean up the temporary file safely with best effort
+
+    // TODO: replace the original file with the new file
 
     todo!()
 }
