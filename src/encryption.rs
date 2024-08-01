@@ -11,7 +11,7 @@ use crate::config::{
 };
 
 /// Encrypt the content from the reader and write to the writer.  
-/// If error is encounted, the status of the reader and writer are undefined.
+/// If error is encounted, the status of the reader and writer are unspecified.
 pub fn stream_encrypt(
     mut encryptor: EncryptorBE32<Aes256GcmSiv>,
     reader: &mut impl io::Read,
@@ -73,7 +73,7 @@ pub fn stream_encrypt(
 
 /// Decrypt the content from the reader and write to the writer
 /// using AES-GCM-SIV with 256-bit key.  
-/// If error is encounted, the status of the reader and writer are undefined.
+/// If error is encounted, the status of the reader and writer are unspecified.
 pub fn stream_decrypt(
     mut decryptor: DecryptorBE32<Aes256GcmSiv>,
     reader: &mut impl io::Read,
