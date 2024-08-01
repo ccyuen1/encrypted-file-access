@@ -3,7 +3,7 @@ use std::ops::{Add, Sub};
 use aead::{stream::StreamPrimitive, AeadInPlace, KeySizeUser};
 use bytes::Bytes;
 use derive_where::derive_where;
-use either::Either;
+use either::Either::{self, Left, Right};
 use generic_array::{
     typenum::{operator_aliases::Sum, Unsigned},
     ArrayLength, GenericArray,
@@ -45,22 +45,30 @@ impl HeaderBuilder {
         Self::default()
     }
 
-    pub fn version<'a>(mut self, version: Either<String, &'a str>) -> Self {
-        self.0.version = either::for_both!(version, s => Bytes::from(s));
+    pub fn version(mut self, version: Either<String, &str>) -> Self {
+        self.0.version = match version {
+            Left(s) => Bytes::from(s),
+            Right(s) => Bytes::copy_from_slice(s.as_bytes()),
+        };
         self
     }
 
-    pub fn format_marker<'a>(
+    pub fn format_marker(
         mut self,
-        format_marker: Either<String, &'a str>,
+        format_marker: Either<String, &str>,
     ) -> Self {
-        self.0.format_marker =
-            either::for_both!(format_marker, s => Bytes::from(s));
+        self.0.format_marker = match format_marker {
+            Left(s) => Bytes::from(s),
+            Right(s) => Bytes::copy_from_slice(s.as_bytes()),
+        };
         self
     }
 
-    pub fn extension<'a>(mut self, extension: Either<String, &'a str>) -> Self {
-        self.0.extension = either::for_both!(extension, s => Bytes::from(s));
+    pub fn extension(mut self, extension: Either<String, &str>) -> Self {
+        self.0.extension = match extension {
+            Left(s) => Bytes::from(s),
+            Right(s) => Bytes::copy_from_slice(s.as_bytes()),
+        };
         self
     }
 
