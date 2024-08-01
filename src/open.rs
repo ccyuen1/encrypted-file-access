@@ -78,6 +78,16 @@ fn read_header<R: BufRead>(reader: R) -> csv::Result<(Header, R)> {
     let mut take_reader = reader.take(MAX_HEADER_SIZE);
     let mut buf = Vec::new();
     take_reader.read_until(b'\n', &mut buf)?;
+    match buf.last() {
+        Some(b'\n') => (),
+        _ => {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Header does not end with line feed or too large",
+            )
+            .into());
+        }
+    }
 
     // parse the header
     let header: Header = csv_reader_builder()
