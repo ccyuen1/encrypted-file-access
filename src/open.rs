@@ -1,6 +1,6 @@
 use std::{
     fs::File,
-    io,
+    io::{self, BufRead},
     ops::{Add, Sub},
     path::PathBuf,
 };
@@ -10,11 +10,15 @@ use aead::{
     AeadInPlace, KeySizeUser,
 };
 use aes_gcm_siv::Aes256GcmSiv;
+use anyhow::anyhow;
 use clap::Args;
 use generic_array::ArrayLength;
 use open::commands;
 
-use crate::encrypted_file_format::{Header, Metadata};
+use crate::{
+    config::{csv_reader_builder, MAX_HEADER_SIZE},
+    encrypted_file_format::{Header, Metadata},
+};
 
 #[derive(Args, Debug)]
 /// Arguments for opening an existing encrypted file
@@ -67,10 +71,22 @@ pub fn open(args: &OpenArgs) -> anyhow::Result<()> {
 }
 
 /// Read and parse the header of an encrypted file.
-///
 /// This will error if the header is invalid.
-fn read_header(reader: &mut impl io::Read) -> anyhow::Result<Header> {
-    todo!()
+fn read_header<R: BufRead>(reader: R) -> csv::Result<(Header, R)> {
+    // Read the byte array of the header.
+    // This is to ensure that the CSV reader cannot read past the end of the header.
+    let mut take_reader = reader.take(MAX_HEADER_SIZE);
+    let mut buf = Vec::new();
+    take_reader.read_until(b'\n', &mut buf)?;
+
+    // parse the header
+    let header: Header = csv_reader_builder()
+        .from_reader(buf.as_slice())
+        .deserialize()
+        .next()
+        .ok_or(io::Error::from(io::ErrorKind::InvalidData))??;
+
+    Ok((header, take_reader.into_inner()))
 }
 
 /// Read and parse the metadata section of an encrypted file.
