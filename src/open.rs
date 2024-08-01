@@ -72,6 +72,8 @@ pub fn open(args: &OpenArgs) -> anyhow::Result<()> {
 
 /// Read and parse the header of an encrypted file.
 /// This will error if the header is invalid.
+///
+/// If error occurs, the status of reader is unspecified.
 fn read_header<R: BufRead>(reader: R) -> csv::Result<Header> {
     // Read the byte array of the header.
     // This is to ensure that the CSV reader cannot read past the end of the header.
@@ -104,7 +106,7 @@ fn read_header<R: BufRead>(reader: R) -> csv::Result<Header> {
 /// This will error if the metadata section is invalid.
 fn read_metadata<A, S>(
     reader: &mut impl io::Read,
-) -> anyhow::Result<Metadata<A, S>>
+) -> bincode::Result<Metadata<A, S>>
 where
     A: AeadInPlace + KeySizeUser,
     S: StreamPrimitive<A>,
@@ -143,6 +145,6 @@ where
 {
     let mut buf =
         GenericArray::<u8, <Metadata<A, S> as SizeUser>::Size>::default();
-
-    todo!()
+    reader.read_exact(&mut buf)?;
+    bincode::deserialize_from(buf.as_slice())
 }
