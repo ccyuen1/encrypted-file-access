@@ -1,6 +1,10 @@
 use std::ops::{Add, Sub};
 
-use aead::{stream::StreamPrimitive, AeadInPlace, KeySizeUser};
+use aead::{
+    consts::{U1, U32},
+    stream::StreamPrimitive,
+    AeadInPlace, KeySizeUser,
+};
 use bytes::Bytes;
 use derive_where::derive_where;
 use either::Either::{self, Left, Right};
@@ -16,7 +20,8 @@ pub const DEFAULT_FORMAT_MARKER: &str = "encrypted-file-access";
 pub const DEFAULT_EXTENSION: &str = "txt";
 
 // Constants for the metadata section
-pub const SALT_SIZE: usize = 32;
+pub type SaltSize = U32;
+pub const SALT_SIZE: usize = SaltSize::USIZE;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 /// Header of the encrypted file. See [`HeaderBuilder`] for building from default values.
@@ -111,7 +116,12 @@ where
     pub encrypted_dek: GenericArray<u8, Sum<A::KeySize, A::TagSize>>,
 }
 
-impl<A, S> Metadata<A, S>
+/// Types which has a non-negative size.
+pub trait SizeUser {
+    type Size: ArrayLength<u8>;
+}
+
+impl<A, S> SizeUser for Metadata<A, S>
 where
     A: AeadInPlace + KeySizeUser,
     S: StreamPrimitive<A>,
@@ -119,13 +129,45 @@ where
     aead::stream::NonceSize<A, S>: ArrayLength<u8>,
     A::KeySize: Add<A::TagSize>,
     <A::KeySize as Add<A::TagSize>>::Output: ArrayLength<u8>,
+    aead::stream::NonceSize<A, S>: Add<<A::KeySize as Add<A::TagSize>>::Output>,
+    A::NonceSize:
+        Add<Sum<aead::stream::NonceSize<A, S>, Sum<A::KeySize, A::TagSize>>>,
+    SaltSize: Add<
+        Sum<
+            A::NonceSize,
+            Sum<aead::stream::NonceSize<A, S>, Sum<A::KeySize, A::TagSize>>,
+        >,
+    >,
+    U1: Add<
+        Sum<
+            SaltSize,
+            Sum<
+                A::NonceSize,
+                Sum<aead::stream::NonceSize<A, S>, Sum<A::KeySize, A::TagSize>>,
+            >,
+        >,
+    >,
+    Sum<
+        U1,
+        Sum<
+            SaltSize,
+            Sum<
+                A::NonceSize,
+                Sum<aead::stream::NonceSize<A, S>, Sum<A::KeySize, A::TagSize>>,
+            >,
+        >,
+    >: ArrayLength<u8>,
 {
-    /// Memory size of the metadata in bytes
-    pub const SIZE: usize = 1
-        + SALT_SIZE
-        + A::NonceSize::USIZE
-        + aead::stream::NonceSize::<A, S>::USIZE
-        + Sum::<A::KeySize, A::TagSize>::USIZE;
+    type Size = Sum<
+        U1,
+        Sum<
+            SaltSize,
+            Sum<
+                A::NonceSize,
+                Sum<aead::stream::NonceSize<A, S>, Sum<A::KeySize, A::TagSize>>,
+            >,
+        >,
+    >;
 }
 
 #[cfg(test)]

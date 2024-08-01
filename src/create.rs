@@ -216,7 +216,8 @@ fn get_extension(args: &CreateArgs) -> anyhow::Result<&str> {
 mod tests {
 
     use crate::encrypted_file_format::{
-        DEFAULT_EXTENSION, DEFAULT_FORMAT_MARKER, DEFAULT_FORMAT_VERSION,
+        SizeUser, DEFAULT_EXTENSION, DEFAULT_FORMAT_MARKER,
+        DEFAULT_FORMAT_VERSION,
     };
 
     use super::*;
@@ -248,7 +249,7 @@ mod tests {
             write_metadata(&mut buf, &md).unwrap();
             assert_eq!(
                 buf.len(),
-                Metadata::<Aes256GcmSiv, StreamBE32<_>>::SIZE
+                <Metadata::<Aes256GcmSiv, StreamBE32<_>> as SizeUser>::Size::USIZE
             );
             assert_eq!(
                 bincode::deserialize::<Metadata<Aes256GcmSiv, StreamBE32<_>>>(

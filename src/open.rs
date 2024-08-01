@@ -6,18 +6,18 @@ use std::{
 };
 
 use aead::{
+    consts::U1,
     stream::{StreamBE32, StreamPrimitive},
     AeadInPlace, KeySizeUser,
 };
 use aes_gcm_siv::Aes256GcmSiv;
-use anyhow::anyhow;
 use clap::Args;
-use generic_array::ArrayLength;
+use generic_array::{typenum::Sum, ArrayLength, GenericArray};
 use open::commands;
 
 use crate::{
     config::{csv_reader_builder, MAX_HEADER_SIZE},
-    encrypted_file_format::{Header, Metadata},
+    encrypted_file_format::{Header, Metadata, SaltSize, SizeUser},
 };
 
 #[derive(Args, Debug)]
@@ -112,6 +112,37 @@ where
     aead::stream::NonceSize<A, S>: ArrayLength<u8>,
     A::KeySize: Add<A::TagSize>,
     <A::KeySize as Add<A::TagSize>>::Output: ArrayLength<u8>,
+    aead::stream::NonceSize<A, S>: Add<<A::KeySize as Add<A::TagSize>>::Output>,
+    A::NonceSize:
+        Add<Sum<aead::stream::NonceSize<A, S>, Sum<A::KeySize, A::TagSize>>>,
+    SaltSize: Add<
+        Sum<
+            A::NonceSize,
+            Sum<aead::stream::NonceSize<A, S>, Sum<A::KeySize, A::TagSize>>,
+        >,
+    >,
+    U1: Add<
+        Sum<
+            SaltSize,
+            Sum<
+                A::NonceSize,
+                Sum<aead::stream::NonceSize<A, S>, Sum<A::KeySize, A::TagSize>>,
+            >,
+        >,
+    >,
+    Sum<
+        U1,
+        Sum<
+            SaltSize,
+            Sum<
+                A::NonceSize,
+                Sum<aead::stream::NonceSize<A, S>, Sum<A::KeySize, A::TagSize>>,
+            >,
+        >,
+    >: ArrayLength<u8>,
 {
+    let mut buf =
+        GenericArray::<u8, <Metadata<A, S> as SizeUser>::Size>::default();
+
     todo!()
 }
