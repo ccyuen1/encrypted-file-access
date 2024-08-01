@@ -148,3 +148,18 @@ where
     reader.read_exact(&mut buf)?;
     bincode::deserialize_from(buf.as_slice())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_read_header() {
+        // TODO
+    }
+
+    #[test]
+    fn test_read_metadata() {
+        // TODO
+    }
+}
