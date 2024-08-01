@@ -1,6 +1,6 @@
 # Encrypted File Format Specification
 
-Version: 0.1
+**Version: 0.1**
 
 This file specifies the format of the encrypted file used in this program.
 
@@ -8,26 +8,36 @@ An encrypted file consists of three parts: a header, a metadata section, and a b
 
 ## Header
 
-The header is in raw UTF-8 text with a fixed number of lines separated by line feeds (0x0A).
-Leading and trailing spaces should not exist.
+The header is in UTF-8 CSV format with one line.
+Each field is ended by exactly one comma.
+Leading and trailing spaces should not exist for any field.
+A line feed ends the header.
 
-First line: Format version number in text. Example: 0.1
+The fields are in the following order.
 
-Second line: It is always "encrypted-file-format" (without the quotes) to mark that the file is in our format.
+Field 1: Format version number in text. Example: 0.1
 
-The final line feed ends the header.
+Field 2: It is always "encrypted-file-format" (without quotes) to mark that the file is in our format.
+
+Field 3: Extension of the decrypted file. Example: txt
 
 ## Metadata Section
 
-Currently, the metadata section has a fixed size.
+The metadata section has a fixed size. It stores the metadata in the following order.
 
-The first byte is 0x01 if the plaintext is compressed before encryption, otherwise 0x00.
-If the plaintext is compressed, it is compressed in LZMA2 format.
+1. The first byte is 0x01 if the plaintext file is compressed before encryption, otherwise 0x00.
+   If the plaintext is compressed, it is compressed in XZ format.
 
-The salt
+2. The salt for key derivation function, i.e., Argon2id, in 32 bytes in plain binary format.
 
-The initialization vector (IV) for Argon2id
+3. The nonce, aka initialization vector (IV), in 12 bytes for the encryption algorithm. This is used to encrypt the DEK.
 
-The **TODO** bytes are the 256-bit data encryption key encrypted using AES-GCM-SIV with the salt and IV.
+4. The nonce in 7 bytes for the encryption of the body.
+
+5. The 48-byte ciphertext of the 256-bit data encryption key (DEK).
+   It is encrypted by AES-GCM-SIV using the key encryption key (KEK) and the nonce for DEK.
+   The KEK is derived from the salt and a user-provided password using Argon2id.
 
 ## Body
+
+The ciphertext of the file content. The plaintext is encrypted by streaming encryption with [aead::stream::EncryptorBE32](https://docs.rs/aead/0.5.2/aead/stream/type.EncryptorBE32.html) with the DEK, the nonce for body, and AES-GCM-SIV with 256-bit key.

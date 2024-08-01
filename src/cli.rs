@@ -1,6 +1,6 @@
-use std::path::PathBuf;
+use clap::{Parser, Subcommand};
 
-use clap::{Args, Parser, Subcommand};
+use crate::{create::CreateArgs, open::OpenArgs};
 
 #[derive(Parser, Debug)]
 #[command(version, author)]
@@ -23,24 +23,4 @@ pub enum Actions {
 
     /// Alias of open
     O(OpenArgs),
-}
-
-#[derive(Args, Debug)]
-pub struct CreateArgs {
-    /// Path to the encrypted file to create
-    pub file: PathBuf,
-
-    #[arg(long)]
-    /// Do not compress the decrypted file before encryption
-    pub no_compress: bool,
-}
-
-#[derive(Args, Debug)]
-pub struct OpenArgs {
-    /// Path to the encrypted file to open
-    pub file: PathBuf,
-
-    #[arg(short, long)]
-    /// Executable to open the decrypted file. If not given, use the default system handler
-    pub executable: Option<PathBuf>,
 }

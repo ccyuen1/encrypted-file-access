@@ -1,12 +1,11 @@
 use clap::Parser;
 
-use cli::{Actions, Cli};
+use encrypted_file_access::{
+    cli::{Actions, Cli},
+    create, open,
+};
 
-mod cli;
-mod create;
-mod open;
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> anyhow::Result<()> {
     env_logger::init();
 
     let cli = Cli::parse();
