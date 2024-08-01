@@ -17,7 +17,7 @@ pub const AES256GCMSIV_TAG_SIZE: usize =
 pub const DEFAULT_DECRYPTED_FILE_EXTENSION: &str = "txt";
 
 /// Maximum allowed header size in bytes for the encrypted file.
-pub const MAX_HEADER_SIZE: usize = 4 * 1024;
+pub const MAX_HEADER_SIZE: u64 = 4 * 1024;
 //
 //
 
