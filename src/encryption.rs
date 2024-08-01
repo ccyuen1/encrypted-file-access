@@ -10,7 +10,6 @@ use crate::config::{
     AEAD_STREAM_ENCRYPTION_BUFFER_LENGTH, AES256GCMSIV_TAG_SIZE,
 };
 
-// TODO: This function never ends during testing
 /// Encrypt the content from the reader and write to the writer.  
 /// If error is encounted, the status of the reader and writer are undefined.
 pub fn stream_encrypt(
@@ -24,15 +23,21 @@ pub fn stream_encrypt(
     const TAG_SIZE: usize = AES256GCMSIV_TAG_SIZE;
 
     let mut in_buffer = vec![0u8; BUFFER_LEN];
-    let mut read_len;
+    let mut total_read_len_in_iter;
     loop {
-        read_len = reader.read(&mut in_buffer)?;
-        while read_len > 0 && read_len < BUFFER_LEN {
-            read_len += reader.read(&mut in_buffer[read_len..])?;
+        total_read_len_in_iter = 0;
+        let mut one_time_read_len = reader.read(&mut in_buffer)?;
+        total_read_len_in_iter += one_time_read_len;
+        while one_time_read_len > 0 && total_read_len_in_iter < BUFFER_LEN {
+            one_time_read_len =
+                reader.read(&mut in_buffer[total_read_len_in_iter..])?;
+            total_read_len_in_iter += one_time_read_len;
         }
-        if read_len < BUFFER_LEN {
+        if total_read_len_in_iter < BUFFER_LEN {
+            // last chunk
             break;
         }
+
         let ciphertext = encryptor
             .encrypt_next(in_buffer.as_slice())
             .with_context(|| "Failed to encrypt file body")?;
@@ -51,10 +56,10 @@ pub fn stream_encrypt(
 
     // last chunk of data needs a different method
     let ciphertext = encryptor
-        .encrypt_last(&in_buffer[..read_len])
+        .encrypt_last(&in_buffer[..total_read_len_in_iter])
         .with_context(|| "Failed to encrypt last chunk of file body")?;
     // check the length of the ciphertext
-    if ciphertext.len() != read_len + TAG_SIZE {
+    if ciphertext.len() != total_read_len_in_iter + TAG_SIZE {
         bail!(
             "Unexpected ciphertext chunk with length {}, expected {}",
             ciphertext.len(),
