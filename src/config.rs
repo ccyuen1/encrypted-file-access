@@ -9,14 +9,14 @@ use argon2::{Algorithm, Argon2, Params, Version};
 /// This is a fixed value so that it is known during decryption.
 pub const AEAD_STREAM_ENCRYPTION_BUFFER_LENGTH: usize = 1024 * 1024; // 1MB
 
-/// Tag size for AES256-GCM-SIV.
+/// Tag size in bytes for AES256-GCM-SIV.
 pub const AES256GCMSIV_TAG_SIZE: usize =
     <Aes256GcmSiv as AeadCore>::TagSize::USIZE;
 
 /// Default file extension for the decrypted file.
 pub const DEFAULT_DECRYPTED_FILE_EXTENSION: &str = "txt";
 
-/// Maximum allowed header size for the encrypted file.
+/// Maximum allowed header size in bytes for the encrypted file.
 pub const MAX_HEADER_SIZE: usize = 4 * 1024;
 //
 //
