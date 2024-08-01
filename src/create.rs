@@ -59,13 +59,15 @@ pub struct CreateArgs {
 /// ```no_run
 /// use std::path::PathBuf;
 /// use encrypted_file_access::create::{CreateArgs, create};
-/// create(&CreateArgs {
-///    out_file: PathBuf::from("example.encrypted"),
-///    src: Some(PathBuf::from("source.txt")),
-///    extension: None,
-///    no_compress: true,
-///    xz_level: 6,
-///    }).unwrap();
+///
+/// let args = CreateArgs {
+///     out_file: PathBuf::from("example.encrypted"),
+///     src: Some(PathBuf::from("source.txt")),
+///     extension: None,
+///     no_compress: true,
+///     xz_level: 6,
+/// };
+/// create(&args).unwrap();
 /// ```
 pub fn create(args: &CreateArgs) -> anyhow::Result<()> {
     // check if the source file exists
