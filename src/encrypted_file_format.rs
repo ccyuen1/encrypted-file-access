@@ -180,7 +180,7 @@ mod tests {
     #[test]
     fn test_metadata_size() {
         assert_eq!(
-            Metadata::<Aes256GcmSiv, StreamBE32<Aes256GcmSiv>>::SIZE,
+            <Metadata::<Aes256GcmSiv, StreamBE32<_>> as SizeUser>::Size::USIZE,
             1 + SALT_SIZE + 12 + 7 + 48
         );
     }

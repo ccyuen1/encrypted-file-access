@@ -13,7 +13,7 @@ use aes_gcm_siv::{AeadInPlace, Aes256GcmSiv, Key, KeyInit};
 use anyhow::{anyhow, bail};
 use clap::Args;
 use either::Either::{Left, Right};
-use generic_array::ArrayLength;
+use generic_array::{typenum::Unsigned, ArrayLength};
 use rand::{Rng as _, SeedableRng as _};
 use xz2::bufread::XzEncoder;
 use zeroize::Zeroize as _;
