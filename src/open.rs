@@ -73,7 +73,7 @@ pub fn open(args: &OpenArgs) -> anyhow::Result<()> {
 /// Read and parse the header of an encrypted file.
 /// This will error if the header is invalid.
 ///
-/// If error occurs, the status of reader is unspecified.
+/// If error occurs, the state of reader is unspecified.
 fn read_header<R: BufRead>(reader: R) -> csv::Result<Header> {
     // Read the byte array of the header.
     // This is to ensure that the CSV reader cannot read past the end of the header.
