@@ -102,8 +102,6 @@ fn read_header<R: BufRead>(reader: R) -> csv::Result<Header> {
 }
 
 /// Read and parse the metadata section of an encrypted file.
-///
-/// This will error if the metadata section is invalid.
 fn read_metadata<A, S>(
     reader: &mut impl io::Read,
 ) -> bincode::Result<Metadata<A, S>>
