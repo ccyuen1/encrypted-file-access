@@ -17,7 +17,9 @@ use open::commands;
 
 use crate::{
     config::{csv_reader_builder, MAX_HEADER_SIZE},
-    encrypted_file_format::{Header, Metadata, SaltSize, SizeUser},
+    encrypted_file_format::{
+        Header, Metadata, SaltSize, SizeUser, DEFAULT_FORMAT_MARKER,
+    },
 };
 
 #[derive(Args, Debug)]
@@ -98,6 +100,14 @@ fn read_header<R: BufRead>(reader: R) -> csv::Result<Header> {
         .next()
         .ok_or(io::Error::from(io::ErrorKind::InvalidData))??;
 
+    if header.format_marker != DEFAULT_FORMAT_MARKER.as_bytes() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Invalid format marker indicating that the file is not in our format",
+        )
+        .into());
+    }
+
     Ok(header)
 }
 
@@ -163,6 +173,12 @@ mod tests {
         };
         let actual_header = read_header(s.as_bytes()).unwrap();
         assert_eq!(actual_header, expected_header);
+    }
+
+    #[test]
+    fn test_read_header_with_invalid_format_marker() {
+        let s = "1.00215,invalid_marker,a\u{6557}d\n";
+        assert!(read_header(s.as_bytes()).is_err());
     }
 
     #[test]
