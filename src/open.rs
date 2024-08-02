@@ -5,7 +5,7 @@ use std::{
     io::{self, BufRead, Write},
     ops::{Add, Sub},
     path::{Path, PathBuf},
-    process::{Child, ExitStatus},
+    process::Child,
 };
 
 use aead::{
@@ -103,10 +103,7 @@ pub fn open(args: &OpenArgs) -> anyhow::Result<()> {
     // open the decrypted file with the specified application and wait for it to finish
     open_file_with(
         &decrypted_file_path,
-        args.executable
-            .as_ref()
-            .map(|p| p.to_string_lossy())
-            .as_deref(),
+        args.executable.as_deref(),
         temp_dir.path(),
     )?
     .wait()
@@ -237,11 +234,11 @@ fn check_header(header: &Header) -> io::Result<()> {
 /// Return the [`Child`] if successful.
 fn open_file_with(
     path: impl AsRef<OsStr>,
-    app: Option<&str>,
+    app: Option<&Path>,
     current_dir: impl AsRef<Path>,
 ) -> anyhow::Result<Child> {
     let mut command = if let Some(exe) = app {
-        open::with_command(path, exe)
+        open::with_command(path, exe.to_string_lossy())
     } else {
         open::commands(path).into_iter().next().ok_or(anyhow!(
             "Cannot find an application to open the decrypted file"
