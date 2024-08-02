@@ -1,9 +1,11 @@
 use core::str;
 use std::{
+    ffi::OsStr,
     fs::{File, OpenOptions},
     io::{self, BufRead, Write},
     ops::{Add, Sub},
-    path::PathBuf,
+    path::{Path, PathBuf},
+    process::{Child, ExitStatus},
 };
 
 use aead::{
@@ -12,9 +14,9 @@ use aead::{
     Aead, AeadInPlace, Key, KeyInit, KeySizeUser,
 };
 use aes_gcm_siv::Aes256GcmSiv;
+use anyhow::{anyhow, Context};
 use clap::Args;
 use generic_array::{typenum::Sum, ArrayLength, GenericArray};
-use open::commands;
 use secrecy::{ExposeSecret, Secret};
 use tempfile::tempdir;
 use uuid::Uuid;
@@ -98,10 +100,19 @@ pub fn open(args: &OpenArgs) -> anyhow::Result<()> {
     drop(decrypted_writer);
     drop(in_reader);
 
-    // TODO: open the decrypted file with the specified application
+    // open the decrypted file with the specified application and wait for it to finish
+    open_file_with(
+        &decrypted_file_path,
+        args.executable
+            .as_ref()
+            .map(|p| p.to_string_lossy())
+            .as_deref(),
+        temp_dir.path(),
+    )?
+    .wait()
+    .with_context(|| "Waiting for application to finish")?;
 
-    // TODO: after the application terminates,
-    //       create a new password-protected file alongside the original file
+    // TODO: create a new password-protected file alongside the original file
     //       reflecting the modifications made to the temporary file
 
     // TODO: clean up the temporary file safely with best effort
@@ -220,6 +231,24 @@ fn check_header(header: &Header) -> io::Result<()> {
     str::from_utf8(&header.extension).map_err(error_fn)?;
 
     Ok(())
+}
+
+/// Open a file with the specified application or the default application.
+/// Return the [`Child`] if successful.
+fn open_file_with(
+    path: impl AsRef<OsStr>,
+    app: Option<&str>,
+    current_dir: impl AsRef<Path>,
+) -> anyhow::Result<Child> {
+    let mut command = if let Some(exe) = app {
+        open::with_command(path, exe)
+    } else {
+        open::commands(path).into_iter().next().ok_or(anyhow!(
+            "Cannot find an application to open the decrypted file"
+        ))?
+    };
+    let child = command.current_dir(current_dir).spawn()?;
+    Ok(child)
 }
 
 #[cfg(test)]
