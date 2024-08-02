@@ -4,7 +4,7 @@
 
 This software helps users create, view, and modify a password-protected file in a format defined by this software. Suitable for archiving a file that requires frequent modifications.
 
-*Disclaimer: This software is only suitable for files with a low security requirement because the decrypted file is stored insecurely in the operating system's temp directory for convenient temporary access. Use it on your own risk.*
+*Disclaimer: This software is only suitable for files with a low security requirement because the decrypted file is stored insecurely in the directory of the password-protected file for convenient temporary access. Use it on your own risk.*
 
 ## Features
 
