@@ -26,6 +26,7 @@ log = "0.4.22"
 open = "5.3.0"
 rand = "0.8.5"
 rpassword = "7.3.1"
+semver = "1.0"
 serde = { version = "1.0.204", features = ["derive"] }
 tempfile = "3.10.1"
 xz2 = { version = "0.1.7", features = ["static"] }

@@ -100,13 +100,7 @@ fn read_header<R: BufRead>(reader: R) -> csv::Result<Header> {
         .next()
         .ok_or(io::Error::from(io::ErrorKind::InvalidData))??;
 
-    if header.format_marker != DEFAULT_FORMAT_MARKER.as_bytes() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "Invalid format marker indicating that the file is not in our format",
-        )
-        .into());
-    }
+    check_header(&header)?;
 
     Ok(header)
 }
@@ -155,6 +149,37 @@ where
         GenericArray::<u8, <Metadata<A, S> as SizeUser>::Size>::default();
     reader.read_exact(&mut buf)?;
     bincode::deserialize_from(buf.as_slice())
+}
+
+/// Check the validity of the header.
+/// Return an error with explanation if the header is invalid.
+fn check_header(header: &Header) -> io::Result<()> {
+    fn error_fn(
+        e: impl Into<Box<dyn std::error::Error + Send + Sync>>,
+    ) -> io::Error {
+        io::Error::new(io::ErrorKind::InvalidData, e)
+    }
+
+    // check format marker
+    if header.format_marker != DEFAULT_FORMAT_MARKER.as_bytes() {
+        return Err(error_fn("Invalid format marker indicating that the file is not in our format"));
+    }
+
+    // check version is not newer than our supported version
+    let version = semver::Version::parse(
+        str::from_utf8(&header.version).map_err(error_fn)?,
+    )
+    .map_err(error_fn)?;
+    if version > semver::Version::parse(DEFAULT_FORMAT_VERSION).unwrap() {
+        return Err(error_fn(
+            "Unrecognized file format version, consider updating this program",
+        ));
+    }
+
+    // check extension is valid UTF-8
+    str::from_utf8(&header.extension).map_err(error_fn)?;
+
+    Ok(())
 }
 
 #[cfg(test)]
