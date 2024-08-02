@@ -1,14 +1,37 @@
 use std::io;
 
+use aead::Key;
 use aes_gcm_siv::{
     aead::stream::{DecryptorBE32, EncryptorBE32},
     Aes256GcmSiv,
 };
 use anyhow::{bail, Context};
+use zeroize::Zeroize;
 
 use crate::config::{
-    AEAD_STREAM_ENCRYPTION_BUFFER_LENGTH, AES256GCMSIV_TAG_SIZE,
+    argon2_config, AEAD_STREAM_ENCRYPTION_BUFFER_LENGTH, AES256GCMSIV_TAG_SIZE,
 };
+
+/// Prompt the user for a password and derive the key encryption key (KEK) using Argon2id.
+pub fn prompt_for_password_and_derive_kek(
+    salt: &[u8],
+) -> anyhow::Result<Key<Aes256GcmSiv>> {
+    let argon2 = argon2_config();
+
+    // create a KEK buffer
+    let mut kek = Key::<Aes256GcmSiv>::from([0u8; 32]);
+
+    let mut password =
+        rpassword::prompt_password("Create a password for the file: ")?;
+
+    // hash the password using Argon2id to obtain the KEK
+    argon2.hash_password_into(password.as_bytes(), salt, kek.as_mut_slice())?;
+
+    // make best effort to prevent leak
+    password.zeroize();
+
+    Ok(kek)
+}
 
 /// Encrypt the content from the reader and write to the writer.  
 /// If error is encounted, the state of the reader and writer are unspecified.

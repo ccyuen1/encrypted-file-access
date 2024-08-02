@@ -19,10 +19,9 @@ use xz2::bufread::XzEncoder;
 use zeroize::Zeroize as _;
 
 use crate::{
-    config::{
-        argon2_config, csv_writer_builder, DEFAULT_DECRYPTED_FILE_EXTENSION,
-    },
+    config::{csv_writer_builder, DEFAULT_DECRYPTED_FILE_EXTENSION},
     encrypted_file_format::{Header, HeaderBuilder, Metadata},
+    encryption::prompt_for_password_and_derive_kek,
 };
 
 #[derive(Args, Debug)]
@@ -168,27 +167,6 @@ where
     <A::KeySize as Add<A::TagSize>>::Output: ArrayLength<u8>,
 {
     bincode::serialize_into(writer, md)
-}
-
-/// Prompt the user for a password and derive the key encryption key (KEK) using Argon2id.
-fn prompt_for_password_and_derive_kek(
-    salt: &[u8],
-) -> anyhow::Result<Key<Aes256GcmSiv>> {
-    let argon2 = argon2_config();
-
-    // create a KEK buffer
-    let mut kek = Key::<Aes256GcmSiv>::from([0u8; 32]);
-
-    let mut password =
-        rpassword::prompt_password("Create a password for the file: ")?;
-
-    // hash the password using Argon2id to obtain the KEK
-    argon2.hash_password_into(password.as_bytes(), salt, kek.as_mut_slice())?;
-
-    // make best effort to prevent leak
-    password.zeroize();
-
-    Ok(kek)
 }
 
 /// Extract the correct file extension from the command line arguments.  
