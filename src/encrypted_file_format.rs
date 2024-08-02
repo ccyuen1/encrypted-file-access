@@ -15,7 +15,7 @@ use generic_array::{
 use serde::{Deserialize, Serialize};
 
 // Default values for the header
-pub const DEFAULT_FORMAT_VERSION: &str = "0.1";
+pub const DEFAULT_FORMAT_VERSION: &str = "0.1.0";
 pub const DEFAULT_FORMAT_MARKER: &str = "encrypted-file-access";
 pub const DEFAULT_EXTENSION: &str = "txt";
 

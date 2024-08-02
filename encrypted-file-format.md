@@ -1,6 +1,6 @@
 # Encrypted File Format Specification
 
-**Version: 0.1**
+**Version: 0.1.0**
 
 This file specifies the format of the encrypted file used in this program.
 

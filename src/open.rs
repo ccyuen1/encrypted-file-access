@@ -1,3 +1,4 @@
+use core::str;
 use std::{
     fs::File,
     io::{self, BufRead},
@@ -19,6 +20,7 @@ use crate::{
     config::{csv_reader_builder, MAX_HEADER_SIZE},
     encrypted_file_format::{
         Header, Metadata, SaltSize, SizeUser, DEFAULT_FORMAT_MARKER,
+        DEFAULT_FORMAT_VERSION,
     },
 };
 
@@ -160,11 +162,6 @@ fn check_header(header: &Header) -> io::Result<()> {
         io::Error::new(io::ErrorKind::InvalidData, e)
     }
 
-    // check format marker
-    if header.format_marker != DEFAULT_FORMAT_MARKER.as_bytes() {
-        return Err(error_fn("Invalid format marker indicating that the file is not in our format"));
-    }
-
     // check version is not newer than our supported version
     let version = semver::Version::parse(
         str::from_utf8(&header.version).map_err(error_fn)?,
@@ -174,6 +171,11 @@ fn check_header(header: &Header) -> io::Result<()> {
         return Err(error_fn(
             "Unrecognized file format version, consider updating this program",
         ));
+    }
+
+    // check format marker
+    if header.format_marker != DEFAULT_FORMAT_MARKER.as_bytes() {
+        return Err(error_fn("Invalid format marker indicating that the file is not in our format"));
     }
 
     // check extension is valid UTF-8
@@ -189,10 +191,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_read_header() {
-        let s = format!("1.00215,{},a\u{6557}d\n", DEFAULT_FORMAT_MARKER);
+    fn test_read_header_with_valid_header() {
+        let s = format!("0.0.205,{},a\u{6557}d\n", DEFAULT_FORMAT_MARKER);
         let expected_header = Header {
-            version: "1.00215".into(),
+            version: "0.0.205".into(),
             format_marker: DEFAULT_FORMAT_MARKER.into(),
             extension: "a\u{6557}d".into(),
         };
@@ -202,8 +204,37 @@ mod tests {
 
     #[test]
     fn test_read_header_with_invalid_format_marker() {
-        let s = "1.00215,invalid_marker,a\u{6557}d\n";
+        let s = "0.1.0,invalid_marker,a\u{6557}d\n";
         assert!(read_header(s.as_bytes()).is_err());
+    }
+
+    #[test]
+    fn test_read_header_with_invalid_utf8() {
+        let mut s = Vec::new();
+        s.extend(b"\x45\x22\xAA,");
+        s.extend(DEFAULT_FORMAT_MARKER.as_bytes());
+        s.extend(b",txt\n");
+        assert!(read_header(s.as_slice()).is_err());
+
+        s.clear();
+        s.extend(b"0.1.0,\x00\xAB\xAB,txt\n");
+        assert!(read_header(s.as_slice()).is_err());
+
+        s.clear();
+        s.extend(b"0.1.0,");
+        s.extend(DEFAULT_FORMAT_MARKER.as_bytes());
+        s.extend(b",\xEE\xEF\n");
+        assert!(read_header(s.as_slice()).is_err());
+    }
+
+    #[test]
+    fn test_read_header_with_invalid_version() {
+        let mut s = Vec::new();
+        s.extend(u64::MAX.to_string().as_bytes());
+        s.extend(b".0.0,");
+        s.extend(DEFAULT_FORMAT_MARKER.as_bytes());
+        s.extend(b",txt\n");
+        assert!(read_header(s.as_slice()).is_err());
     }
 
     #[test]
