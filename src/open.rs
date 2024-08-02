@@ -151,15 +151,37 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::encrypted_file_format::DEFAULT_FORMAT_MARKER;
+
     use super::*;
 
     #[test]
     fn test_read_header() {
-        // TODO
+        let s = format!("1.00215,{},a\u{6557}d\n", DEFAULT_FORMAT_MARKER);
+        let expected_header = Header {
+            version: "1.00215".into(),
+            format_marker: DEFAULT_FORMAT_MARKER.into(),
+            extension: "a\u{6557}d".into(),
+        };
+        let actual_header = read_header(s.as_bytes()).unwrap();
+        assert_eq!(actual_header, expected_header);
     }
 
     #[test]
     fn test_read_metadata() {
-        // TODO
+        use rand::Rng;
+
+        let mut rng = rand::thread_rng();
+        let expected_md: Metadata<Aes256GcmSiv, StreamBE32<_>> = Metadata {
+            compression_enabled: rng.gen(),
+            salt: rng.gen(),
+            nonce_dek: rng.gen::<[u8; 12]>().into(),
+            nonce_body: rng.gen::<[u8; 7]>().into(),
+            encrypted_dek: std::array::from_fn(|_| rng.gen()).into(),
+        };
+        let s = bincode::serialize(&expected_md).unwrap();
+        let actual_md: Metadata<Aes256GcmSiv, StreamBE32<_>> =
+            read_metadata(&mut s.as_slice()).unwrap();
+        assert_eq!(actual_md, expected_md);
     }
 }
