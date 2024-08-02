@@ -1,7 +1,7 @@
 use core::str;
 use std::{
-    fs::File,
-    io::{self, BufRead},
+    fs::{File, OpenOptions},
+    io::{self, BufRead, Write},
     ops::{Add, Sub},
     path::PathBuf,
 };
@@ -15,6 +15,8 @@ use aes_gcm_siv::Aes256GcmSiv;
 use clap::Args;
 use generic_array::{typenum::Sum, ArrayLength, GenericArray};
 use open::commands;
+use tempfile::{tempdir, tempfile};
+use uuid::Uuid;
 
 use crate::{
     config::{csv_reader_builder, MAX_HEADER_SIZE},
@@ -52,14 +54,30 @@ pub struct OpenArgs {
 /// open(&args).unwrap();
 /// ```
 pub fn open(args: &OpenArgs) -> anyhow::Result<()> {
-    let mut reader = io::BufReader::new(File::open(&args.file)?);
-    let header = read_header(&mut reader)?;
+    let mut in_reader = io::BufReader::new(File::open(&args.file)?);
+    let header = read_header(&mut in_reader)?;
     let metadata: Metadata<Aes256GcmSiv, StreamBE32<_>> =
-        read_metadata(&mut reader)?;
+        read_metadata(&mut in_reader)?;
 
-    // TODO: prepare a temporary file
+    // prepare a temporary file for decryption
+    let temp_dir = tempdir()?;
+    let decrypted_file_uuid = Uuid::new_v4();
+    let decrypted_file_path = temp_dir.path().join(
+        decrypted_file_uuid.to_string()
+            + "."
+            + str::from_utf8(&header.extension).unwrap(),
+    );
+    let decrypted_file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&decrypted_file_path)?;
+    let mut decrypted_writer = io::BufWriter::new(decrypted_file);
 
     // TODO: decrypt the body
+
+    // flush the decrypted file
+    decrypted_writer.flush()?;
+    drop(decrypted_writer);
 
     // TODO: open the decrypted file with the specified application
 
