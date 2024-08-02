@@ -8,14 +8,15 @@ use std::{
 
 use aead::{
     consts::U1,
-    stream::{StreamBE32, StreamPrimitive},
-    AeadInPlace, KeySizeUser,
+    stream::{DecryptorBE32, StreamBE32, StreamPrimitive},
+    Aead, AeadInPlace, Key, KeyInit, KeySizeUser,
 };
 use aes_gcm_siv::Aes256GcmSiv;
 use clap::Args;
 use generic_array::{typenum::Sum, ArrayLength, GenericArray};
 use open::commands;
-use tempfile::{tempdir, tempfile};
+use secrecy::{ExposeSecret, Secret};
+use tempfile::tempdir;
 use uuid::Uuid;
 
 use crate::{
@@ -24,6 +25,7 @@ use crate::{
         Header, Metadata, SaltSize, SizeUser, DEFAULT_FORMAT_MARKER,
         DEFAULT_FORMAT_VERSION,
     },
+    encryption::{prompt_for_password_and_derive_kek, stream_decrypt},
 };
 
 #[derive(Args, Debug)]
@@ -73,11 +75,28 @@ pub fn open(args: &OpenArgs) -> anyhow::Result<()> {
         .open(&decrypted_file_path)?;
     let mut decrypted_writer = io::BufWriter::new(decrypted_file);
 
-    // TODO: decrypt the body
+    // decrypt the DEK
+    let kek = Secret::new(prompt_for_password_and_derive_kek(&metadata.salt)?);
+    let cipher = Aes256GcmSiv::new(kek.expose_secret());
+    let dek_secret = Secret::new(
+        cipher
+            .decrypt(&metadata.nonce_dek, metadata.encrypted_dek.as_slice())?,
+    );
+    if dek_secret.expose_secret().len() != Aes256GcmSiv::key_size() {
+        panic!("Unexpected length {} of decrypted DEK, expected {}. This is a bug in this program.",
+            dek_secret.expose_secret().len(), Aes256GcmSiv::key_size());
+    }
+    let dek = Key::<Aes256GcmSiv>::from_slice(dek_secret.expose_secret());
+
+    // decrypt the body
+    let decryptor: DecryptorBE32<Aes256GcmSiv> =
+        DecryptorBE32::new(dek, &metadata.nonce_body);
+    stream_decrypt(decryptor, &mut in_reader, &mut decrypted_writer)?;
 
     // flush the decrypted file
     decrypted_writer.flush()?;
     drop(decrypted_writer);
+    drop(in_reader);
 
     // TODO: open the decrypted file with the specified application
 
@@ -88,6 +107,7 @@ pub fn open(args: &OpenArgs) -> anyhow::Result<()> {
     // TODO: clean up the temporary file safely with best effort
 
     // TODO: replace the original file with the new file
+    temp_dir.close()?;
 
     todo!()
 }
