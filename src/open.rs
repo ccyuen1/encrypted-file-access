@@ -318,4 +318,15 @@ mod tests {
             read_metadata(&mut s.as_slice()).unwrap();
         assert_eq!(actual_md, expected_md);
     }
+
+    #[test]
+    fn test_open_file_with_default_app() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let file_path = dir.path().join("test_file.txt");
+        let file = File::create_new(&file_path)?;
+        drop(file);
+        open_file_with(&file_path, None, &dir)?.kill()?;
+        dir.close()?;
+        Ok(())
+    }
 }
