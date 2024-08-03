@@ -80,19 +80,20 @@ pub fn open(args: &OpenArgs) -> anyhow::Result<()> {
     // decrypt the DEK
     let kek = Secret::new(prompt_for_password_and_derive_kek(&metadata.salt)?);
     let cipher = Aes256GcmSiv::new(kek.expose_secret());
-    let dek_secret = Secret::new(
+    let dek = Secret::new(
         cipher
             .decrypt(&metadata.nonce_dek, metadata.encrypted_dek.as_slice())?,
     );
-    if dek_secret.expose_secret().len() != Aes256GcmSiv::key_size() {
+    if dek.expose_secret().len() != Aes256GcmSiv::key_size() {
         panic!("Unexpected length {} of decrypted DEK, expected {}. This is a bug in this program.",
-            dek_secret.expose_secret().len(), Aes256GcmSiv::key_size());
+            dek.expose_secret().len(), Aes256GcmSiv::key_size());
     }
-    let dek = Key::<Aes256GcmSiv>::from_slice(dek_secret.expose_secret());
 
     // decrypt the body
-    let decryptor: DecryptorBE32<Aes256GcmSiv> =
-        DecryptorBE32::new(dek, &metadata.nonce_body);
+    let decryptor: DecryptorBE32<Aes256GcmSiv> = DecryptorBE32::new(
+        Key::<Aes256GcmSiv>::from_slice(dek.expose_secret()),
+        &metadata.nonce_body,
+    );
     stream_decrypt(decryptor, &mut in_reader, &mut decrypted_writer)?;
 
     // flush the decrypted file
