@@ -14,11 +14,6 @@ use generic_array::{
 };
 use serde::{Deserialize, Serialize};
 
-// Default values for the header
-pub const DEFAULT_FORMAT_VERSION: &str = "0.1.0";
-pub const DEFAULT_FORMAT_MARKER: &str = "encrypted-file-access";
-pub const DEFAULT_EXTENSION: &str = "txt";
-
 // Constants for the metadata section
 pub type SaltSize = U32;
 pub const SALT_SIZE: usize = SaltSize::USIZE;
@@ -29,14 +24,27 @@ pub struct Header {
     pub version: Bytes,
     pub format_marker: Bytes,
     pub extension: Bytes,
+    pub xz_level: u32,
+}
+
+impl Header {
+    /// Version of the encrypted file format
+    pub const DEFAULT_VERSION: &'static str = "0.1.0";
+
+    pub const DEFAULT_FORMAT_MARKER: &'static str = "encrypted-file-access";
+    pub const DEFAULT_EXTENSION: &'static str = "txt";
+    pub const DEFAULT_XZ_LEVEL: u32 = 6;
+    pub const MAX_XZ_LEVEL: u32 = 9;
+    pub const MIN_XZ_LEVEL: u32 = 0;
 }
 
 impl Default for Header {
     fn default() -> Self {
         Header {
-            version: Bytes::from(DEFAULT_FORMAT_VERSION),
-            format_marker: Bytes::from(DEFAULT_FORMAT_MARKER),
-            extension: Bytes::from(DEFAULT_EXTENSION),
+            version: Bytes::from(Self::DEFAULT_VERSION),
+            format_marker: Bytes::from(Self::DEFAULT_FORMAT_MARKER),
+            extension: Bytes::from(Self::DEFAULT_EXTENSION),
+            xz_level: Self::DEFAULT_XZ_LEVEL,
         }
     }
 }
@@ -74,6 +82,11 @@ impl HeaderBuilder {
             Left(s) => Bytes::from(s),
             Right(s) => Bytes::copy_from_slice(s.as_bytes()),
         };
+        self
+    }
+
+    pub fn xz_level(mut self, xz_level: u32) -> Self {
+        self.0.xz_level = xz_level;
         self
     }
 

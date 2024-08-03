@@ -25,10 +25,8 @@ use xz2::write::XzDecoder;
 
 use crate::{
     config::{csv_reader_builder, MAX_HEADER_SIZE},
-    encrypted_file_format::{
-        Header, Metadata, SaltSize, SizeUser, DEFAULT_FORMAT_MARKER,
-        DEFAULT_FORMAT_VERSION,
-    },
+    create::{self, CreateArgs},
+    encrypted_file_format::{Header, Metadata, SaltSize, SizeUser},
     encryption::{prompt_for_password_and_derive_kek, stream_decrypt},
 };
 
@@ -223,19 +221,28 @@ fn check_header(header: &Header) -> io::Result<()> {
         str::from_utf8(&header.version).map_err(error_fn)?,
     )
     .map_err(error_fn)?;
-    if version > semver::Version::parse(DEFAULT_FORMAT_VERSION).unwrap() {
+    if version > semver::Version::parse(Header::DEFAULT_VERSION).unwrap() {
         return Err(error_fn(
             "Unrecognized file format version, consider updating this program",
         ));
     }
 
     // check format marker
-    if header.format_marker != DEFAULT_FORMAT_MARKER.as_bytes() {
+    if header.format_marker != Header::DEFAULT_FORMAT_MARKER.as_bytes() {
         return Err(error_fn("Invalid format marker indicating that the file is not in our format"));
     }
 
     // check extension is valid UTF-8
     str::from_utf8(&header.extension).map_err(error_fn)?;
+
+    // check XZ level is valid
+    if !(Header::MIN_XZ_LEVEL..=Header::MAX_XZ_LEVEL).contains(&header.xz_level)
+    {
+        return Err(error_fn(format!(
+            "Invalid XZ compression level: {}",
+            header.xz_level
+        )));
+    }
 
     Ok(())
 }
@@ -260,17 +267,19 @@ fn open_file_with(
 
 #[cfg(test)]
 mod tests {
-    use crate::encrypted_file_format::DEFAULT_FORMAT_MARKER;
+    use crate::encrypted_file_format::Header;
 
     use super::*;
 
     #[test]
     fn test_read_header_with_valid_header() {
-        let s = format!("0.0.205,{},a\u{6557}d\n", DEFAULT_FORMAT_MARKER);
+        let s =
+            format!("0.0.205,{},a\u{6557}d,9\n", Header::DEFAULT_FORMAT_MARKER);
         let expected_header = Header {
             version: "0.0.205".into(),
-            format_marker: DEFAULT_FORMAT_MARKER.into(),
+            format_marker: Header::DEFAULT_FORMAT_MARKER.into(),
             extension: "a\u{6557}d".into(),
+            xz_level: 9,
         };
         let actual_header = read_header(s.as_bytes()).unwrap();
         assert_eq!(actual_header, expected_header);
@@ -278,7 +287,7 @@ mod tests {
 
     #[test]
     fn test_read_header_with_invalid_format_marker() {
-        let s = "0.1.0,invalid_marker,a\u{6557}d\n";
+        let s = "0.1.0,invalid_marker,a\u{6557}d,6\n";
         assert!(read_header(s.as_bytes()).is_err());
     }
 
@@ -286,18 +295,24 @@ mod tests {
     fn test_read_header_with_invalid_utf8() {
         let mut s = Vec::new();
         s.extend(b"\x45\x22\xAA,");
-        s.extend(DEFAULT_FORMAT_MARKER.as_bytes());
-        s.extend(b",txt\n");
+        s.extend(Header::DEFAULT_FORMAT_MARKER.as_bytes());
+        s.extend(b",txt,6\n");
         assert!(read_header(s.as_slice()).is_err());
 
         s.clear();
-        s.extend(b"0.1.0,\x00\xAB\xAB,txt\n");
+        s.extend(b"0.1.0,\x00\xAB\xAB,txt,6\n");
         assert!(read_header(s.as_slice()).is_err());
 
         s.clear();
         s.extend(b"0.1.0,");
-        s.extend(DEFAULT_FORMAT_MARKER.as_bytes());
-        s.extend(b",\xEE\xEF\n");
+        s.extend(Header::DEFAULT_FORMAT_MARKER.as_bytes());
+        s.extend(b",\xEE\xEF,6\n");
+        assert!(read_header(s.as_slice()).is_err());
+
+        s.clear();
+        s.extend(b"0.1.0,");
+        s.extend(Header::DEFAULT_FORMAT_MARKER.as_bytes());
+        s.extend(b",txt,\x00\xAB\xAB\n");
         assert!(read_header(s.as_slice()).is_err());
     }
 
@@ -306,9 +321,32 @@ mod tests {
         let mut s = Vec::new();
         s.extend(u64::MAX.to_string().as_bytes());
         s.extend(b".0.0,");
-        s.extend(DEFAULT_FORMAT_MARKER.as_bytes());
-        s.extend(b",txt\n");
+        s.extend(Header::DEFAULT_FORMAT_MARKER.as_bytes());
+        s.extend(b",txt,6\n");
         assert!(read_header(s.as_slice()).is_err());
+    }
+    #[test]
+    fn test_read_header_with_invalid_xz_level() {
+        let mut s = Vec::new();
+        s.extend(b"0.1.0,");
+        s.extend(Header::DEFAULT_FORMAT_MARKER.as_bytes());
+        s.extend(b",txt,");
+
+        let mut s1 = s.clone();
+        s1.extend(b"-1\n");
+        assert!(read_header(s1.as_slice()).is_err());
+
+        let mut s2 = s.clone();
+        s2.extend(b"10\n");
+        assert!(read_header(s2.as_slice()).is_err());
+
+        let mut s3 = s.clone();
+        s3.extend(b"0\n");
+        assert!(read_header(s3.as_slice()).is_ok());
+
+        let mut s4 = s.clone();
+        s4.extend(b"9\n");
+        assert!(read_header(s4.as_slice()).is_ok());
     }
 
     #[test]

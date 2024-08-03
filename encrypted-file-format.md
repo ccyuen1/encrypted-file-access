@@ -21,6 +21,8 @@ Field 2: It is always "encrypted-file-format" (without quotes) to mark that the 
 
 Field 3: Extension of the decrypted file. Example: txt
 
+Field 4: XZ compression level. Example: 6
+
 ## Metadata Section
 
 The metadata section has a fixed size. It stores the metadata in the following order.

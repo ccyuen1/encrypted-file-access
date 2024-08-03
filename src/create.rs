@@ -84,6 +84,7 @@ pub fn create(args: &CreateArgs) -> anyhow::Result<()> {
     // write the header to the file
     let header = HeaderBuilder::new()
         .extension(Right(get_extension(args)?))
+        .xz_level(args.xz_level)
         .build();
     write_header(&mut out_file, &header)?;
 
@@ -195,10 +196,7 @@ fn get_extension(args: &CreateArgs) -> anyhow::Result<&str> {
 #[cfg(test)]
 mod tests {
 
-    use crate::encrypted_file_format::{
-        SizeUser, DEFAULT_EXTENSION, DEFAULT_FORMAT_MARKER,
-        DEFAULT_FORMAT_VERSION,
-    };
+    use crate::encrypted_file_format::{Header, SizeUser};
 
     use super::*;
 
@@ -208,8 +206,11 @@ mod tests {
         let mut buf = Vec::new();
         write_header(&mut buf, &header).unwrap();
         let expected_csv = format!(
-            "{},{},{}\n",
-            DEFAULT_FORMAT_VERSION, DEFAULT_FORMAT_MARKER, DEFAULT_EXTENSION
+            "{},{},{},{}\n",
+            Header::DEFAULT_VERSION,
+            Header::DEFAULT_FORMAT_MARKER,
+            Header::DEFAULT_EXTENSION,
+            Header::DEFAULT_XZ_LEVEL
         );
         assert_eq!(buf, expected_csv.as_bytes());
     }
