@@ -238,9 +238,9 @@ fn open_file_with(
     current_dir: impl AsRef<Path>,
 ) -> anyhow::Result<Child> {
     let mut command = if let Some(exe) = app {
-        open::with_command(path, exe.to_string_lossy())
+        open_wait::with_command(path, exe)
     } else {
-        open::commands(path).into_iter().next().ok_or(anyhow!(
+        open_wait::commands(path).into_iter().next().ok_or(anyhow!(
             "Cannot find an application to open the decrypted file"
         ))?
     };
