@@ -1,64 +1,96 @@
 use std::ops::{Add, Sub};
 
-use aead::{stream::StreamPrimitive, AeadInPlace, KeySizeUser};
+use aead::{
+    consts::{U1, U32},
+    stream::StreamPrimitive,
+    AeadInPlace, KeySizeUser,
+};
+use bytes::Bytes;
 use derive_where::derive_where;
+use either::Either::{self, Left, Right};
 use generic_array::{
     typenum::{operator_aliases::Sum, Unsigned},
     ArrayLength, GenericArray,
 };
 use serde::{Deserialize, Serialize};
 
-// Default values for the header
-pub const DEFAULT_FORMAT_VERSION: &str = "0.1";
-pub const DEFAULT_FORMAT_MARKER: &str = "encrypted-file-access";
-pub const DEFAULT_EXTENSION: &str = "txt";
-
 // Constants for the metadata section
-pub const SALT_SIZE: usize = 32;
+pub type SaltSize = U32;
+pub const SALT_SIZE: usize = SaltSize::USIZE;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 /// Header of the encrypted file. See [`HeaderBuilder`] for building from default values.
-pub struct Header<'a> {
-    pub version: &'a str,
-    pub format_marker: &'a str,
-    pub extension: &'a str,
+pub struct Header {
+    pub version: Bytes,
+    pub format_marker: Bytes,
+    pub extension: Bytes,
+    pub xz_level: u32,
 }
 
-impl Default for Header<'_> {
+impl Header {
+    /// Version of the encrypted file format
+    pub const DEFAULT_VERSION: &'static str = "0.1.0";
+
+    pub const DEFAULT_FORMAT_MARKER: &'static str = "encrypted-file-access";
+    pub const DEFAULT_EXTENSION: &'static str = "txt";
+    pub const DEFAULT_XZ_LEVEL: u32 = 6;
+    pub const MAX_XZ_LEVEL: u32 = 9;
+    pub const MIN_XZ_LEVEL: u32 = 0;
+}
+
+impl Default for Header {
     fn default() -> Self {
         Header {
-            version: DEFAULT_FORMAT_VERSION,
-            format_marker: DEFAULT_FORMAT_MARKER,
-            extension: DEFAULT_EXTENSION,
+            version: Bytes::from(Self::DEFAULT_VERSION),
+            format_marker: Bytes::from(Self::DEFAULT_FORMAT_MARKER),
+            extension: Bytes::from(Self::DEFAULT_EXTENSION),
+            xz_level: Self::DEFAULT_XZ_LEVEL,
         }
     }
 }
 
 #[derive(Debug, Clone, Default)]
 /// Builder for the [`Header`] of the encrypted file.
-pub struct HeaderBuilder<'a>(Header<'a>);
+pub struct HeaderBuilder(Header);
 
-impl<'a> HeaderBuilder<'a> {
+impl HeaderBuilder {
     pub fn new() -> Self {
         Self::default()
     }
 
-    pub fn version(mut self, version: &'a str) -> Self {
-        self.0.version = version;
+    pub fn version(mut self, version: Either<String, &str>) -> Self {
+        self.0.version = match version {
+            Left(s) => Bytes::from(s),
+            Right(s) => Bytes::copy_from_slice(s.as_bytes()),
+        };
         self
     }
 
-    pub fn format_marker(mut self, format_marker: &'a str) -> Self {
-        self.0.format_marker = format_marker;
+    pub fn format_marker(
+        mut self,
+        format_marker: Either<String, &str>,
+    ) -> Self {
+        self.0.format_marker = match format_marker {
+            Left(s) => Bytes::from(s),
+            Right(s) => Bytes::copy_from_slice(s.as_bytes()),
+        };
         self
     }
 
-    pub fn extension(mut self, extension: &'a str) -> Self {
-        self.0.extension = extension;
+    pub fn extension(mut self, extension: Either<String, &str>) -> Self {
+        self.0.extension = match extension {
+            Left(s) => Bytes::from(s),
+            Right(s) => Bytes::copy_from_slice(s.as_bytes()),
+        };
         self
     }
 
-    pub fn build(self) -> Header<'a> {
+    pub fn xz_level(mut self, xz_level: u32) -> Self {
+        self.0.xz_level = xz_level;
+        self
+    }
+
+    pub fn build(self) -> Header {
         self.0
     }
 }
@@ -97,7 +129,12 @@ where
     pub encrypted_dek: GenericArray<u8, Sum<A::KeySize, A::TagSize>>,
 }
 
-impl<A, S> Metadata<A, S>
+/// Types which has a non-negative size.
+pub trait SizeUser {
+    type Size: ArrayLength<u8>;
+}
+
+impl<A, S> SizeUser for Metadata<A, S>
 where
     A: AeadInPlace + KeySizeUser,
     S: StreamPrimitive<A>,
@@ -105,13 +142,45 @@ where
     aead::stream::NonceSize<A, S>: ArrayLength<u8>,
     A::KeySize: Add<A::TagSize>,
     <A::KeySize as Add<A::TagSize>>::Output: ArrayLength<u8>,
+    aead::stream::NonceSize<A, S>: Add<<A::KeySize as Add<A::TagSize>>::Output>,
+    A::NonceSize:
+        Add<Sum<aead::stream::NonceSize<A, S>, Sum<A::KeySize, A::TagSize>>>,
+    SaltSize: Add<
+        Sum<
+            A::NonceSize,
+            Sum<aead::stream::NonceSize<A, S>, Sum<A::KeySize, A::TagSize>>,
+        >,
+    >,
+    U1: Add<
+        Sum<
+            SaltSize,
+            Sum<
+                A::NonceSize,
+                Sum<aead::stream::NonceSize<A, S>, Sum<A::KeySize, A::TagSize>>,
+            >,
+        >,
+    >,
+    Sum<
+        U1,
+        Sum<
+            SaltSize,
+            Sum<
+                A::NonceSize,
+                Sum<aead::stream::NonceSize<A, S>, Sum<A::KeySize, A::TagSize>>,
+            >,
+        >,
+    >: ArrayLength<u8>,
 {
-    /// Memory size of the metadata in bytes
-    pub const SIZE: usize = 1
-        + SALT_SIZE
-        + A::NonceSize::USIZE
-        + aead::stream::NonceSize::<A, S>::USIZE
-        + Sum::<A::KeySize, A::TagSize>::USIZE;
+    type Size = Sum<
+        U1,
+        Sum<
+            SaltSize,
+            Sum<
+                A::NonceSize,
+                Sum<aead::stream::NonceSize<A, S>, Sum<A::KeySize, A::TagSize>>,
+            >,
+        >,
+    >;
 }
 
 #[cfg(test)]
@@ -124,7 +193,7 @@ mod tests {
     #[test]
     fn test_metadata_size() {
         assert_eq!(
-            Metadata::<Aes256GcmSiv, StreamBE32<Aes256GcmSiv>>::SIZE,
+            <Metadata::<Aes256GcmSiv, StreamBE32<_>> as SizeUser>::Size::USIZE,
             1 + SALT_SIZE + 12 + 7 + 48
         );
     }

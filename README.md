@@ -18,5 +18,4 @@ The password-protected file format is specified in [encrypted-file-format.md](en
 
 ## TODO List
 
-- Implement the open file feature.
 - Allow users change the password. This should change the data encryption key (DEK).

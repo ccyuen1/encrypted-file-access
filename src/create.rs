@@ -13,16 +13,15 @@ use aes_gcm_siv::{AeadInPlace, Aes256GcmSiv, Key, KeyInit};
 use anyhow::{anyhow, bail};
 use clap::Args;
 use either::Either::{Left, Right};
-use generic_array::ArrayLength;
+use generic_array::{typenum::Unsigned, ArrayLength};
 use rand::{Rng as _, SeedableRng as _};
+use secrecy::{ExposeSecret, Secret};
 use xz2::bufread::XzEncoder;
-use zeroize::Zeroize as _;
 
 use crate::{
-    config::{
-        argon2_config, csv_writer_builder, DEFAULT_DECRYPTED_FILE_EXTENSION,
-    },
+    config::{csv_writer_builder, DEFAULT_DECRYPTED_FILE_EXTENSION},
     encrypted_file_format::{Header, HeaderBuilder, Metadata},
+    encryption::{derive_kek, prompt_for_password, stream_encrypt},
 };
 
 #[derive(Args, Debug)]
@@ -51,20 +50,31 @@ pub struct CreateArgs {
 /// Create a new encrypted file in the given path.
 /// Do nothing and return error if the file already exists.
 ///
+/// If the password is not provided, the user is prompted to enter a password.
+///
 /// # Panics
 /// Panics if `getrandom` is unable to provide secure entropy.  
 /// Panics if unable to hash the password or encrypt the data.
 ///
 /// # Examples
 /// ```no_run
-/// create(&CreateArgs {
-///    file: "example.encrypted".into(),
-///    src: None,
-///    extension: Some("txt".to_string()),
-///    no_compress: true,
-///    })?;
+/// use std::path::PathBuf;
+/// use encrypted_file_access::create::{CreateArgs, create};
+///
+/// let args = CreateArgs {
+///     out_file: PathBuf::from("example.encrypted"),
+///     src: Some(PathBuf::from("source.txt")),
+///     extension: None,
+///     no_compress: true,
+///     xz_level: 6,
+/// };
+/// create(&args, None).unwrap();
+/// // User will be prompted to enter a password
 /// ```
-pub fn create(args: &CreateArgs) -> anyhow::Result<()> {
+pub fn create(
+    args: &CreateArgs,
+    password: Option<Secret<String>>,
+) -> anyhow::Result<()> {
     // check if the source file exists
     if let Some(src) = args.src.as_ref() {
         if !src.try_exists()? {
@@ -78,7 +88,10 @@ pub fn create(args: &CreateArgs) -> anyhow::Result<()> {
         .open(&args.out_file)?;
 
     // write the header to the file
-    let header = HeaderBuilder::new().extension(get_extension(args)?).build();
+    let header = HeaderBuilder::new()
+        .extension(Right(get_extension(args)?))
+        .xz_level(args.xz_level)
+        .build();
     write_header(&mut out_file, &header)?;
 
     // generate random numbers that will be stored in plaintext
@@ -88,16 +101,21 @@ pub fn create(args: &CreateArgs) -> anyhow::Result<()> {
     let nonce_body = rng.gen::<[u8; 7]>().into();
 
     // derive the key encryption key (KEK)
-    let mut kek = prompt_for_password_and_derive_kek(&salt)?;
+    let password = match password {
+        Some(pw) => pw,
+        None => prompt_for_password()?,
+    };
+    let kek = derive_kek(&password, &salt)?;
+    drop(password); // done with password
 
     // generate the data encryption key (DEK)
-    let mut dek = Key::<Aes256GcmSiv>::from(rng.gen::<[u8; 32]>());
+    let dek = Secret::new(Key::<Aes256GcmSiv>::from(rng.gen::<[u8; 32]>()));
 
     // encrypt the DEK using KEK
-    let cipher = Aes256GcmSiv::new(&kek);
-    kek.zeroize(); // done with KEK
+    let cipher = Aes256GcmSiv::new(kek.expose_secret());
+    drop(kek); // done with KEK
     let encrypted_dek: [u8; 48] = cipher
-        .encrypt(&nonce_dek, dek.as_ref())?
+        .encrypt(&nonce_dek, dek.expose_secret().as_ref())?
         .try_into()
         .expect("The encrypted data encryption key should be 48 bytes long");
     let encrypted_dek = encrypted_dek.into();
@@ -112,28 +130,30 @@ pub fn create(args: &CreateArgs) -> anyhow::Result<()> {
     };
     write_metadata(&mut out_file, &md)?;
 
-    if let Some(src) = args.src.as_ref() {
-        // prepare for the file body encryption
-        let encryptor: EncryptorBE32<Aes256GcmSiv> =
-            EncryptorBE32::new(&dek, &nonce_body);
-        dek.zeroize(); // done with DEK
-
+    // prepare the plaintext reader for encryption
+    let mut reader = if let Some(src) = args.src.as_ref() {
         // get handler of the source file if specified
         let reader = io::BufReader::new(File::open(src)?);
 
         // compress the file body if compression is enabled
-        let mut reader = if !args.no_compress {
+        let reader = if !args.no_compress {
             Left(XzEncoder::new(reader, args.xz_level))
         } else {
             Right(reader)
         };
 
-        crate::encryption::stream_encrypt(
-            encryptor,
-            &mut reader,
-            &mut out_file,
-        )?;
-    }
+        Left(reader)
+    } else {
+        Right([0u8; 0].as_slice())
+    };
+
+    // prepare for the file body encryption
+    let encryptor: EncryptorBE32<Aes256GcmSiv> =
+        EncryptorBE32::new(dek.expose_secret(), &nonce_body);
+    drop(dek); // done with DEK
+
+    // encrypt the file body and write it to the output file
+    stream_encrypt(encryptor, &mut reader, &mut out_file)?;
     out_file.flush()?;
 
     Ok(())
@@ -163,27 +183,6 @@ where
     bincode::serialize_into(writer, md)
 }
 
-/// Prompt the user for a password and derive the key encryption key (KEK) using Argon2id.
-fn prompt_for_password_and_derive_kek(
-    salt: &[u8],
-) -> anyhow::Result<Key<Aes256GcmSiv>> {
-    let argon2 = argon2_config();
-
-    // create a KEK buffer
-    let mut kek = Key::<Aes256GcmSiv>::from([0u8; 32]);
-
-    let mut password =
-        rpassword::prompt_password("Create a password for the file: ")?;
-
-    // hash the password using Argon2id to obtain the KEK
-    argon2.hash_password_into(password.as_bytes(), salt, kek.as_mut_slice())?;
-
-    // make best effort to prevent leak
-    password.zeroize();
-
-    Ok(kek)
-}
-
 /// Extract the correct file extension from the command line arguments.  
 /// If not provided, [`DEFAULT_DECRYPTED_FILE_EXTENSION`] is returned.
 fn get_extension(args: &CreateArgs) -> anyhow::Result<&str> {
@@ -208,9 +207,7 @@ fn get_extension(args: &CreateArgs) -> anyhow::Result<&str> {
 #[cfg(test)]
 mod tests {
 
-    use crate::encrypted_file_format::{
-        DEFAULT_EXTENSION, DEFAULT_FORMAT_MARKER, DEFAULT_FORMAT_VERSION,
-    };
+    use crate::encrypted_file_format::{Header, SizeUser};
 
     use super::*;
 
@@ -220,8 +217,11 @@ mod tests {
         let mut buf = Vec::new();
         write_header(&mut buf, &header).unwrap();
         let expected_csv = format!(
-            "{},{},{}\n",
-            DEFAULT_FORMAT_VERSION, DEFAULT_FORMAT_MARKER, DEFAULT_EXTENSION
+            "{},{},{},{}\n",
+            Header::DEFAULT_VERSION,
+            Header::DEFAULT_FORMAT_MARKER,
+            Header::DEFAULT_EXTENSION,
+            Header::DEFAULT_XZ_LEVEL
         );
         assert_eq!(buf, expected_csv.as_bytes());
     }
@@ -241,7 +241,7 @@ mod tests {
             write_metadata(&mut buf, &md).unwrap();
             assert_eq!(
                 buf.len(),
-                Metadata::<Aes256GcmSiv, StreamBE32<_>>::SIZE
+                <Metadata::<Aes256GcmSiv, StreamBE32<_>> as SizeUser>::Size::USIZE
             );
             assert_eq!(
                 bincode::deserialize::<Metadata<Aes256GcmSiv, StreamBE32<_>>>(

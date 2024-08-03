@@ -1,6 +1,6 @@
 # Encrypted File Format Specification
 
-**Version: 0.1**
+**Version: 0.1.0**
 
 This file specifies the format of the encrypted file used in this program.
 
@@ -20,6 +20,8 @@ Field 1: Format version number in text. Example: 0.1
 Field 2: It is always "encrypted-file-format" (without quotes) to mark that the file is in our format.
 
 Field 3: Extension of the decrypted file. Example: txt
+
+Field 4: XZ compression level. Example: 6
 
 ## Metadata Section
 

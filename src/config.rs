@@ -9,16 +9,15 @@ use argon2::{Algorithm, Argon2, Params, Version};
 /// This is a fixed value so that it is known during decryption.
 pub const AEAD_STREAM_ENCRYPTION_BUFFER_LENGTH: usize = 1024 * 1024; // 1MB
 
-/// Tag size for AES256-GCM-SIV.
+/// Tag size in bytes for AES256-GCM-SIV.
 pub const AES256GCMSIV_TAG_SIZE: usize =
     <Aes256GcmSiv as AeadCore>::TagSize::USIZE;
 
-/// Buffer size for AES256-GCM-SIV stream decryption.
-pub const AES256GCMSIV_DECRYPTION_BUFFER_LENGTH: usize =
-    AEAD_STREAM_ENCRYPTION_BUFFER_LENGTH + AES256GCMSIV_TAG_SIZE;
-
 /// Default file extension for the decrypted file.
 pub const DEFAULT_DECRYPTED_FILE_EXTENSION: &str = "txt";
+
+/// Maximum allowed header size in bytes for the encrypted file.
+pub const MAX_HEADER_SIZE: u64 = 4 * 1024;
 //
 //
 
@@ -39,6 +38,18 @@ pub fn csv_writer_builder() -> csv::WriterBuilder {
         .has_headers(false)
         .delimiter(b',')
         .terminator(csv::Terminator::Any(b'\n'))
-        .quote_style(csv::QuoteStyle::Necessary);
+        .quote_style(csv::QuoteStyle::Necessary)
+        .buffer_capacity(MAX_HEADER_SIZE as usize);
+    builder
+}
+
+/// Create a default [`csv::ReaderBuilder`] for our use.
+pub fn csv_reader_builder() -> csv::ReaderBuilder {
+    let mut builder = csv::ReaderBuilder::new();
+    builder
+        .has_headers(false)
+        .delimiter(b',')
+        .terminator(csv::Terminator::Any(b'\n'))
+        .buffer_capacity(MAX_HEADER_SIZE as usize);
     builder
 }
