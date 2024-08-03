@@ -16,10 +16,12 @@ use aead::{
 use aes_gcm_siv::Aes256GcmSiv;
 use anyhow::{anyhow, Context};
 use clap::Args;
+use either::Either::{Left, Right};
 use generic_array::{typenum::Sum, ArrayLength, GenericArray};
 use secrecy::{ExposeSecret, Secret};
 use tempfile::tempdir;
 use uuid::Uuid;
+use xz2::write::XzDecoder;
 
 use crate::{
     config::{csv_reader_builder, MAX_HEADER_SIZE},
@@ -75,7 +77,7 @@ pub fn open(args: &OpenArgs) -> anyhow::Result<()> {
         .write(true)
         .create_new(true)
         .open(&decrypted_file_path)?;
-    let mut decrypted_writer = io::BufWriter::new(decrypted_file);
+    let decrypted_writer = io::BufWriter::new(decrypted_file);
 
     // decrypt the DEK
     let kek = Secret::new(prompt_for_password_and_derive_kek(&metadata.salt)?);
@@ -89,16 +91,23 @@ pub fn open(args: &OpenArgs) -> anyhow::Result<()> {
             dek.expose_secret().len(), Aes256GcmSiv::key_size());
     }
 
+    // instantiate the decompressor if compression is enabled
+    let mut writer = if metadata.compression_enabled {
+        Left(XzDecoder::new(decrypted_writer))
+    } else {
+        Right(decrypted_writer)
+    };
+
     // decrypt the body
     let decryptor: DecryptorBE32<Aes256GcmSiv> = DecryptorBE32::new(
         Key::<Aes256GcmSiv>::from_slice(dek.expose_secret()),
         &metadata.nonce_body,
     );
-    stream_decrypt(decryptor, &mut in_reader, &mut decrypted_writer)?;
+    stream_decrypt(decryptor, &mut in_reader, &mut writer)?;
 
     // flush the decrypted file
-    decrypted_writer.flush()?;
-    drop(decrypted_writer);
+    writer.flush()?;
+    drop(writer);
     drop(in_reader);
 
     // open the decrypted file with the specified application and wait for it to finish
