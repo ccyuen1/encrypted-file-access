@@ -230,7 +230,7 @@ fn check_header(header: &Header) -> io::Result<()> {
     Ok(())
 }
 
-/// Open a file with the specified application or the default application.
+/// Open a file or URL with the specified application or the default application.
 /// Return the [`Child`] if successful.
 fn open_file_with(
     path: impl AsRef<OsStr>,
