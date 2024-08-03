@@ -101,6 +101,7 @@ pub fn open(args: &OpenArgs) -> anyhow::Result<()> {
         Key::<Aes256GcmSiv>::from_slice(dek.expose_secret()),
         &metadata.nonce_body,
     );
+    drop(dek); // done with DEK
     stream_decrypt(decryptor, &mut in_reader, &mut writer)?;
 
     // flush the decrypted file
