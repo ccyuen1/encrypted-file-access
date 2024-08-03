@@ -78,7 +78,7 @@ pub fn open(args: &OpenArgs) -> anyhow::Result<()> {
     let decrypted_writer = io::BufWriter::new(decrypted_file);
 
     // decrypt the DEK
-    let kek = Secret::new(prompt_for_password_and_derive_kek(&metadata.salt)?);
+    let kek = prompt_for_password_and_derive_kek(&metadata.salt)?;
     let cipher = Aes256GcmSiv::new(kek.expose_secret());
     let dek = Secret::new(
         cipher

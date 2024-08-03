@@ -6,7 +6,7 @@ use aes_gcm_siv::{
     Aes256GcmSiv,
 };
 use anyhow::{bail, Context};
-use zeroize::Zeroize;
+use secrecy::{ExposeSecret, Secret};
 
 use crate::config::{
     argon2_config, AEAD_STREAM_ENCRYPTION_BUFFER_LENGTH, AES256GCMSIV_TAG_SIZE,
@@ -15,22 +15,24 @@ use crate::config::{
 /// Prompt the user for a password and derive the key encryption key (KEK) using Argon2id.
 pub fn prompt_for_password_and_derive_kek(
     salt: &[u8],
-) -> anyhow::Result<Key<Aes256GcmSiv>> {
+) -> anyhow::Result<Secret<Key<Aes256GcmSiv>>> {
     let argon2 = argon2_config();
 
     // create a KEK buffer
     let mut kek = Key::<Aes256GcmSiv>::from([0u8; 32]);
 
-    let mut password =
-        rpassword::prompt_password("Create a password for the file: ")?;
+    let password = Secret::new(rpassword::prompt_password(
+        "Create a password for the file: ",
+    )?);
 
     // hash the password using Argon2id to obtain the KEK
-    argon2.hash_password_into(password.as_bytes(), salt, kek.as_mut_slice())?;
+    argon2.hash_password_into(
+        password.expose_secret().as_bytes(),
+        salt,
+        kek.as_mut_slice(),
+    )?;
 
-    // make best effort to prevent leak
-    password.zeroize();
-
-    Ok(kek)
+    Ok(Secret::new(kek))
 }
 
 /// Encrypt the content from the reader and write to the writer.  

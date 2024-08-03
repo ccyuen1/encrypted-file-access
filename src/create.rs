@@ -95,7 +95,7 @@ pub fn create(args: &CreateArgs) -> anyhow::Result<()> {
     let nonce_body = rng.gen::<[u8; 7]>().into();
 
     // derive the key encryption key (KEK)
-    let kek = Secret::new(prompt_for_password_and_derive_kek(&salt)?);
+    let kek = prompt_for_password_and_derive_kek(&salt)?;
 
     // generate the data encryption key (DEK)
     let dek = Secret::new(Key::<Aes256GcmSiv>::from(rng.gen::<[u8; 32]>()));
