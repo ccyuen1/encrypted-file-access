@@ -14,7 +14,7 @@ use aead::{
     Aead, AeadInPlace, Key, KeyInit, KeySizeUser,
 };
 use aes_gcm_siv::Aes256GcmSiv;
-use anyhow::{anyhow, Context};
+use anyhow::{anyhow, bail, Context};
 use clap::Args;
 use either::Either::{Left, Right};
 use generic_array::{typenum::Sum, ArrayLength, GenericArray};
@@ -306,9 +306,21 @@ fn create_encrypted_file_alongside_path(
     Ok(temp_out_file_path)
 }
 
-/// Fill a file with zeros.
+/// Replace the content of a file with zeros.
 fn fill_file_with_zeros(path: &Path) -> anyhow::Result<()> {
-    todo!()
+    let mut f = OpenOptions::new().write(true).open(path)?;
+    let mut remaining_len = f.metadata()?.len();
+    const BUF_SIZE: usize = 4 * 1024;
+    let zeros = vec![0u8; BUF_SIZE];
+    while remaining_len > 0 {
+        let bytes_written =
+            f.write(&zeros[..remaining_len.min(BUF_SIZE as u64) as usize])?;
+        if bytes_written == 0 {
+            bail!("The file was not fully written");
+        }
+        remaining_len -= bytes_written as u64;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
