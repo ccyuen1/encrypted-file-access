@@ -15,8 +15,8 @@ use clap::Args;
 use either::Either::{Left, Right};
 use generic_array::{typenum::Unsigned, ArrayLength};
 use rand::{Rng as _, SeedableRng as _};
+use secrecy::{ExposeSecret, Secret};
 use xz2::bufread::XzEncoder;
-use zeroize::Zeroize as _;
 
 use crate::{
     config::{csv_writer_builder, DEFAULT_DECRYPTED_FILE_EXTENSION},
@@ -94,16 +94,16 @@ pub fn create(args: &CreateArgs) -> anyhow::Result<()> {
     let nonce_body = rng.gen::<[u8; 7]>().into();
 
     // derive the key encryption key (KEK)
-    let mut kek = prompt_for_password_and_derive_kek(&salt)?;
+    let kek = Secret::new(prompt_for_password_and_derive_kek(&salt)?);
 
     // generate the data encryption key (DEK)
-    let mut dek = Key::<Aes256GcmSiv>::from(rng.gen::<[u8; 32]>());
+    let dek = Secret::new(Key::<Aes256GcmSiv>::from(rng.gen::<[u8; 32]>()));
 
     // encrypt the DEK using KEK
-    let cipher = Aes256GcmSiv::new(&kek);
-    kek.zeroize(); // done with KEK
+    let cipher = Aes256GcmSiv::new(kek.expose_secret());
+    drop(kek); // done with KEK
     let encrypted_dek: [u8; 48] = cipher
-        .encrypt(&nonce_dek, dek.as_ref())?
+        .encrypt(&nonce_dek, dek.expose_secret().as_ref())?
         .try_into()
         .expect("The encrypted data encryption key should be 48 bytes long");
     let encrypted_dek = encrypted_dek.into();
@@ -137,8 +137,8 @@ pub fn create(args: &CreateArgs) -> anyhow::Result<()> {
 
     // prepare for the file body encryption
     let encryptor: EncryptorBE32<Aes256GcmSiv> =
-        EncryptorBE32::new(&dek, &nonce_body);
-    dek.zeroize(); // done with DEK
+        EncryptorBE32::new(dek.expose_secret(), &nonce_body);
+    drop(dek); // done with DEK
 
     // encrypt the file body and write it to the output file
     stream_encrypt(encryptor, &mut reader, &mut out_file)?;
