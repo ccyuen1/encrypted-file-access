@@ -21,7 +21,7 @@ use xz2::bufread::XzEncoder;
 use crate::{
     config::{csv_writer_builder, DEFAULT_DECRYPTED_FILE_EXTENSION},
     encrypted_file_format::{Header, HeaderBuilder, Metadata},
-    encryption::{prompt_for_password_and_derive_kek, stream_encrypt},
+    encryption::{derive_kek, prompt_for_password, stream_encrypt},
 };
 
 #[derive(Args, Debug)]
@@ -50,6 +50,8 @@ pub struct CreateArgs {
 /// Create a new encrypted file in the given path.
 /// Do nothing and return error if the file already exists.
 ///
+/// If the password is not provided, the user is prompted to enter a password.
+///
 /// # Panics
 /// Panics if `getrandom` is unable to provide secure entropy.  
 /// Panics if unable to hash the password or encrypt the data.
@@ -66,9 +68,13 @@ pub struct CreateArgs {
 ///     no_compress: true,
 ///     xz_level: 6,
 /// };
-/// create(&args).unwrap();
+/// create(&args, None).unwrap();
+/// // User will be prompted to enter a password
 /// ```
-pub fn create(args: &CreateArgs) -> anyhow::Result<()> {
+pub fn create(
+    args: &CreateArgs,
+    password: Option<Secret<String>>,
+) -> anyhow::Result<()> {
     // check if the source file exists
     if let Some(src) = args.src.as_ref() {
         if !src.try_exists()? {
@@ -95,7 +101,12 @@ pub fn create(args: &CreateArgs) -> anyhow::Result<()> {
     let nonce_body = rng.gen::<[u8; 7]>().into();
 
     // derive the key encryption key (KEK)
-    let kek = prompt_for_password_and_derive_kek(&salt)?;
+    let password = match password {
+        Some(pw) => pw,
+        None => prompt_for_password()?,
+    };
+    let kek = derive_kek(&password, &salt)?;
+    drop(password); // done with password
 
     // generate the data encryption key (DEK)
     let dek = Secret::new(Key::<Aes256GcmSiv>::from(rng.gen::<[u8; 32]>()));

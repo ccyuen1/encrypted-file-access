@@ -12,27 +12,11 @@ use crate::config::{
     argon2_config, AEAD_STREAM_ENCRYPTION_BUFFER_LENGTH, AES256GCMSIV_TAG_SIZE,
 };
 
-/// Prompt the user for a password and derive the key encryption key (KEK) using Argon2id.
-pub fn prompt_for_password_and_derive_kek(
-    salt: &[u8],
-) -> anyhow::Result<Secret<Key<Aes256GcmSiv>>> {
-    let argon2 = argon2_config();
-
-    // create a KEK buffer
-    let mut kek = Key::<Aes256GcmSiv>::from([0u8; 32]);
-
-    let password = Secret::new(rpassword::prompt_password(
+/// Prompt the user for a password
+pub fn prompt_for_password() -> anyhow::Result<Secret<String>> {
+    Ok(Secret::new(rpassword::prompt_password(
         "Create a password for the file: ",
-    )?);
-
-    // hash the password using Argon2id to obtain the KEK
-    argon2.hash_password_into(
-        password.expose_secret().as_bytes(),
-        salt,
-        kek.as_mut_slice(),
-    )?;
-
-    Ok(Secret::new(kek))
+    )?))
 }
 
 /// Encrypt the content from the reader and write to the writer.  
@@ -156,6 +140,26 @@ pub fn stream_decrypt(
     writer.write_all(&plaintext)?;
 
     Ok(())
+}
+
+/// Derive the key encryption key (KEK) using Argon2id.
+pub fn derive_kek(
+    password: &Secret<String>,
+    salt: &[u8],
+) -> argon2::Result<Secret<Key<Aes256GcmSiv>>> {
+    let argon2 = argon2_config();
+
+    // create a KEK buffer
+    let mut kek = Key::<Aes256GcmSiv>::from([0u8; 32]);
+
+    // hash the password using Argon2id to obtain the KEK
+    argon2.hash_password_into(
+        password.expose_secret().as_bytes(),
+        salt,
+        kek.as_mut_slice(),
+    )?;
+
+    Ok(Secret::new(kek))
 }
 
 #[cfg(test)]

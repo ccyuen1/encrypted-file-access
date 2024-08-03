@@ -12,8 +12,8 @@ fn main() -> anyhow::Result<()> {
     log::debug!("{:?}", cli);
 
     match &cli.action {
-        Actions::Create(c) | Actions::C(c) => create::create(c)?,
-        Actions::Open(o) | Actions::O(o) => open::open(o)?,
+        Actions::Create(c) | Actions::C(c) => create::create(c, None)?,
+        Actions::Open(o) | Actions::O(o) => open::open(o, None)?,
     }
 
     Ok(())

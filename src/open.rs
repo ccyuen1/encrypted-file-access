@@ -27,7 +27,7 @@ use crate::{
     config::{csv_reader_builder, MAX_HEADER_SIZE},
     create::{self, CreateArgs},
     encrypted_file_format::{Header, Metadata, SaltSize, SizeUser},
-    encryption::{prompt_for_password_and_derive_kek, stream_decrypt},
+    encryption::{derive_kek, prompt_for_password, stream_decrypt},
 };
 
 #[derive(Args, Debug)]
@@ -47,6 +47,8 @@ pub struct OpenArgs {
 /// Modifications to the temporary file are reflected in the password-protected file
 /// after the application terminates.
 ///
+/// If the password is not provided, the user will be prompted to enter it.
+///
 /// # Examples
 /// ```no_run
 /// use std::path::PathBuf;
@@ -55,9 +57,13 @@ pub struct OpenArgs {
 ///     file: PathBuf::from("example.encrypted"),
 ///     executable: Some(PathBuf::from("notepad.exe")),
 /// };
-/// open(&args).unwrap();
+/// open(&args, None).unwrap();
+/// // User will be prompted to enter a password
 /// ```
-pub fn open(args: &OpenArgs) -> anyhow::Result<()> {
+pub fn open(
+    args: &OpenArgs,
+    password: Option<Secret<String>>,
+) -> anyhow::Result<()> {
     let mut in_reader = io::BufReader::new(File::open(&args.file)?);
     let header = read_header(&mut in_reader)?;
     let metadata: Metadata<Aes256GcmSiv, StreamBE32<_>> =
@@ -77,9 +83,16 @@ pub fn open(args: &OpenArgs) -> anyhow::Result<()> {
         .open(&decrypted_file_path)?;
     let decrypted_writer = io::BufWriter::new(decrypted_file);
 
+    // derive the KEK
+    let password = match password {
+        Some(pw) => pw,
+        None => prompt_for_password()?,
+    };
+    let kek = derive_kek(&password, &metadata.salt)?;
+
     // decrypt the DEK
-    let kek = prompt_for_password_and_derive_kek(&metadata.salt)?;
     let cipher = Aes256GcmSiv::new(kek.expose_secret());
+    drop(kek); // done with KEK
     let dek = Secret::new(
         cipher
             .decrypt(&metadata.nonce_dek, metadata.encrypted_dek.as_slice())?,
@@ -124,6 +137,7 @@ pub fn open(args: &OpenArgs) -> anyhow::Result<()> {
         decrypted_file_path.clone(),
         !metadata.compression_enabled,
         header.xz_level,
+        Some(password),
     )?;
 
     // replace the original file with the new file
@@ -279,11 +293,15 @@ fn open_file_with(
 
 /// Create a new password-protected file as a sibling of a file path.
 /// Return the path of the new file.
+///
+/// If the password is not provided,
+/// the user will be prompted to enter a password.
 fn create_encrypted_file_alongside_path(
     sibling_path: &Path,
     decrypted_file_path: PathBuf,
     no_compress: bool,
     xz_level: u32,
+    password: Option<Secret<String>>,
 ) -> anyhow::Result<PathBuf> {
     fn lacks_component_error() -> anyhow::Error {
         anyhow!("Argument `file` lacks a component in the path")
@@ -303,7 +321,8 @@ fn create_encrypted_file_alongside_path(
         no_compress,
         xz_level,
     };
-    create::create(&create_args).with_context(|| "Re-encrypting the file")?;
+    create::create(&create_args, password)
+        .with_context(|| "Re-encrypting the file")?;
     Ok(temp_out_file_path)
 }
 
