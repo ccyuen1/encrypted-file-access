@@ -21,7 +21,7 @@ use zeroize::Zeroize as _;
 use crate::{
     config::{csv_writer_builder, DEFAULT_DECRYPTED_FILE_EXTENSION},
     encrypted_file_format::{Header, HeaderBuilder, Metadata},
-    encryption::prompt_for_password_and_derive_kek,
+    encryption::{prompt_for_password_and_derive_kek, stream_encrypt},
 };
 
 #[derive(Args, Debug)]
@@ -118,28 +118,30 @@ pub fn create(args: &CreateArgs) -> anyhow::Result<()> {
     };
     write_metadata(&mut out_file, &md)?;
 
-    if let Some(src) = args.src.as_ref() {
-        // prepare for the file body encryption
-        let encryptor: EncryptorBE32<Aes256GcmSiv> =
-            EncryptorBE32::new(&dek, &nonce_body);
-        dek.zeroize(); // done with DEK
-
+    // prepare the plaintext reader for encryption
+    let mut reader = if let Some(src) = args.src.as_ref() {
         // get handler of the source file if specified
         let reader = io::BufReader::new(File::open(src)?);
 
         // compress the file body if compression is enabled
-        let mut reader = if !args.no_compress {
+        let reader = if !args.no_compress {
             Left(XzEncoder::new(reader, args.xz_level))
         } else {
             Right(reader)
         };
 
-        crate::encryption::stream_encrypt(
-            encryptor,
-            &mut reader,
-            &mut out_file,
-        )?;
-    }
+        Left(reader)
+    } else {
+        Right([0u8; 0].as_slice())
+    };
+
+    // prepare for the file body encryption
+    let encryptor: EncryptorBE32<Aes256GcmSiv> =
+        EncryptorBE32::new(&dek, &nonce_body);
+    dek.zeroize(); // done with DEK
+
+    // encrypt the file body and write it to the output file
+    stream_encrypt(encryptor, &mut reader, &mut out_file)?;
     out_file.flush()?;
 
     Ok(())
