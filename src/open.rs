@@ -1,6 +1,6 @@
 use core::str;
 use std::{
-    ffi::OsStr,
+    ffi::{OsStr, OsString},
     fs::{File, OpenOptions},
     io::{self, BufRead, Write},
     ops::{Add, Sub},
@@ -118,23 +118,25 @@ pub fn open(args: &OpenArgs) -> anyhow::Result<()> {
     .with_context(|| "Waiting for application to finish")?;
 
     // create a new password-protected file alongside the original file
-    let create_args = CreateArgs {
-        out_file: args.file.with_file_name(Uuid::new_v4().to_string()),
-        src: Some(decrypted_file_path.clone()),
-        extension: None,
-        no_compress: !metadata.compression_enabled,
-        xz_level: header.xz_level,
-    };
-    create::create(&create_args).with_context(|| "Re-encrypting the file")?;
+    let new_file_path = create_encrypted_file_alongside_path(
+        &args.file,
+        decrypted_file_path.clone(),
+        !metadata.compression_enabled,
+        header.xz_level,
+    )?;
 
-    // reflect the modifications made to the temporary file
+    // replace the original file with the new file
+    std::fs::rename(&new_file_path, &args.file)?;
 
-    // TODO: clean up the temporary file safely with best effort
-
-    // TODO: replace the original file with the new file
+    // clean up the temporary file with best effort
+    if let Err(e) = fill_file_with_zeros(&decrypted_file_path) {
+        eprintln!(
+            "Failed to fill the temporary file with zeros before deleting the it: {}", e
+        );
+    }
     temp_dir.close()?;
 
-    todo!()
+    Ok(())
 }
 
 /// Read and parse the header of an encrypted file.
@@ -272,6 +274,41 @@ fn open_file_with(
     };
     let child = command.current_dir(current_dir).spawn()?;
     Ok(child)
+}
+
+/// Create a new password-protected file as a sibling of a file path.
+/// Return the path of the new file.
+fn create_encrypted_file_alongside_path(
+    sibling_path: &Path,
+    decrypted_file_path: PathBuf,
+    no_compress: bool,
+    xz_level: u32,
+) -> anyhow::Result<PathBuf> {
+    fn lacks_component_error() -> anyhow::Error {
+        anyhow!("Argument `file` lacks a component in the path")
+    }
+    let mut temp_out_file_name = OsString::from(Uuid::new_v4().to_string());
+    temp_out_file_name.push("-");
+    temp_out_file_name
+        .push(sibling_path.file_name().ok_or_else(lacks_component_error)?);
+    let temp_out_file_path = sibling_path
+        .parent()
+        .ok_or_else(lacks_component_error)?
+        .join(&temp_out_file_name);
+    let create_args = CreateArgs {
+        out_file: temp_out_file_path.clone(),
+        src: Some(decrypted_file_path),
+        extension: None,
+        no_compress,
+        xz_level,
+    };
+    create::create(&create_args).with_context(|| "Re-encrypting the file")?;
+    Ok(temp_out_file_path)
+}
+
+/// Fill a file with zeros.
+fn fill_file_with_zeros(path: &Path) -> anyhow::Result<()> {
+    todo!()
 }
 
 #[cfg(test)]
