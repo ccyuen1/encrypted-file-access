@@ -117,8 +117,17 @@ pub fn open(args: &OpenArgs) -> anyhow::Result<()> {
     .wait()
     .with_context(|| "Waiting for application to finish")?;
 
-    // TODO: create a new password-protected file alongside the original file
-    //       reflecting the modifications made to the temporary file
+    // create a new password-protected file alongside the original file
+    let create_args = CreateArgs {
+        out_file: args.file.with_file_name(Uuid::new_v4().to_string()),
+        src: Some(decrypted_file_path.clone()),
+        extension: None,
+        no_compress: !metadata.compression_enabled,
+        xz_level: header.xz_level,
+    };
+    create::create(&create_args).with_context(|| "Re-encrypting the file")?;
+
+    // reflect the modifications made to the temporary file
 
     // TODO: clean up the temporary file safely with best effort
 
