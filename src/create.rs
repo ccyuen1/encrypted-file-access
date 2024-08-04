@@ -13,7 +13,7 @@ use aes_gcm_siv::{AeadInPlace, Aes256GcmSiv, Key, KeyInit};
 use anyhow::{anyhow, bail};
 use clap::Args;
 use either::Either::{Left, Right};
-use generic_array::{typenum::Unsigned, ArrayLength};
+use generic_array::ArrayLength;
 use rand::{Rng as _, SeedableRng as _};
 use secrecy::{ExposeSecret, Secret};
 use xz2::bufread::XzEncoder;
@@ -53,8 +53,7 @@ pub struct CreateArgs {
 /// If the password is not provided, the user is prompted to enter a password.
 ///
 /// # Panics
-/// Panics if `getrandom` is unable to provide secure entropy.  
-/// Panics if unable to hash the password or encrypt the data.
+/// Panics if `getrandom` is unable to provide secure entropy.
 ///
 /// # Examples
 /// ```no_run
@@ -103,7 +102,7 @@ pub fn create(
     // derive the key encryption key (KEK)
     let password = match password {
         Some(pw) => pw,
-        None => prompt_for_password()?,
+        None => prompt_for_password(true)?,
     };
     let kek = derive_kek(&password, &salt)?;
     drop(password); // done with password

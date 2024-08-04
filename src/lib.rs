@@ -1,3 +1,4 @@
+pub mod change_password;
 pub mod cli;
 pub mod config;
 pub mod create;

@@ -19,7 +19,7 @@ use clap::Args;
 use either::Either::{Left, Right};
 use generic_array::{typenum::Sum, ArrayLength, GenericArray};
 use secrecy::{ExposeSecret, Secret};
-use tempfile::tempdir;
+use tempfile::{tempdir, TempDir};
 use uuid::Uuid;
 use xz2::write::XzDecoder;
 
@@ -49,6 +49,9 @@ pub struct OpenArgs {
 ///
 /// If the password is not provided, the user will be prompted to enter it.
 ///
+/// # Panics
+/// Panics if `getrandom` is unable to provide secure entropy to re-encrypt the file.
+///
 /// # Examples
 /// ```no_run
 /// use std::path::PathBuf;
@@ -64,63 +67,18 @@ pub fn open(
     args: &OpenArgs,
     password: Option<Secret<String>>,
 ) -> anyhow::Result<()> {
+    // obtain the password
+    let password = match password {
+        Some(pw) => pw,
+        None => prompt_for_password(false)?,
+    };
+
     let mut in_reader = io::BufReader::new(File::open(&args.file)?);
     let header = read_header(&mut in_reader)?;
     let metadata: Metadata<Aes256GcmSiv, StreamBE32<_>> =
         read_metadata(&mut in_reader)?;
-
-    // prepare a temporary file for decryption
-    let temp_dir = tempdir()?;
-    let decrypted_file_uuid = Uuid::new_v4();
-    let decrypted_file_path = temp_dir.path().join(
-        decrypted_file_uuid.to_string()
-            + "."
-            + str::from_utf8(&header.extension).unwrap(),
-    );
-    let decrypted_file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&decrypted_file_path)?;
-    let decrypted_writer = io::BufWriter::new(decrypted_file);
-
-    // derive the KEK
-    let password = match password {
-        Some(pw) => pw,
-        None => prompt_for_password()?,
-    };
-    let kek = derive_kek(&password, &metadata.salt)?;
-
-    // decrypt the DEK
-    let cipher = Aes256GcmSiv::new(kek.expose_secret());
-    drop(kek); // done with KEK
-    let dek = Secret::new(
-        cipher
-            .decrypt(&metadata.nonce_dek, metadata.encrypted_dek.as_slice())?,
-    );
-    if dek.expose_secret().len() != Aes256GcmSiv::key_size() {
-        panic!("Unexpected length {} of decrypted DEK, expected {}. This is a bug in this program.",
-            dek.expose_secret().len(), Aes256GcmSiv::key_size());
-    }
-
-    // instantiate the decompressor if compression is enabled
-    let mut writer = if metadata.compression_enabled {
-        Left(XzDecoder::new(decrypted_writer))
-    } else {
-        Right(decrypted_writer)
-    };
-
-    // decrypt the body
-    let decryptor: DecryptorBE32<Aes256GcmSiv> = DecryptorBE32::new(
-        Key::<Aes256GcmSiv>::from_slice(dek.expose_secret()),
-        &metadata.nonce_body,
-    );
-    drop(dek); // done with DEK
-    stream_decrypt(decryptor, &mut in_reader, &mut writer)?;
-
-    // flush the decrypted file
-    writer.flush()?;
-    drop(writer);
-    drop(in_reader);
+    let (temp_dir, decrypted_file_path) =
+        decrypt_to_temp_file(in_reader, &header, &metadata, &password)?;
 
     // open the decrypted file with the specified application and wait for it to finish
     open_file_with(
@@ -154,11 +112,72 @@ pub fn open(
     Ok(())
 }
 
+/// Decrypt password-protected data from reader to a newly-created temporary file.
+/// Return the temporary directory containing the file and the path to the file.
+pub fn decrypt_to_temp_file(
+    mut reader: impl BufRead,
+    header: &Header,
+    metadata: &Metadata<Aes256GcmSiv, StreamBE32<Aes256GcmSiv>>,
+    password: &Secret<String>,
+) -> anyhow::Result<(TempDir, PathBuf)> {
+    // prepare a temporary file for decryption
+    let temp_dir = tempdir()?;
+    let decrypted_file_uuid = Uuid::new_v4();
+    let decrypted_file_path = temp_dir.path().join(
+        decrypted_file_uuid.to_string()
+            + "."
+            + str::from_utf8(&header.extension).unwrap(),
+    );
+    let decrypted_file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&decrypted_file_path)?;
+    let decrypted_writer = io::BufWriter::new(decrypted_file);
+
+    // derive the KEK
+    let kek = derive_kek(password, &metadata.salt)?;
+
+    // decrypt the DEK
+    let cipher = Aes256GcmSiv::new(kek.expose_secret());
+    drop(kek); // done with KEK
+    let dek = Secret::new(
+        cipher
+            .decrypt(&metadata.nonce_dek, metadata.encrypted_dek.as_slice())
+            .map_err(|_| anyhow!("Failed to decrypt the file. Perhaps a wrong password is provided?"))?,
+    );
+    if dek.expose_secret().len() != Aes256GcmSiv::key_size() {
+        panic!("Unexpected length {} of decrypted DEK, expected {}. This is a bug in this program.",
+            dek.expose_secret().len(), Aes256GcmSiv::key_size());
+    }
+
+    // instantiate the decompressor if compression is enabled
+    let mut writer = if metadata.compression_enabled {
+        Left(XzDecoder::new(decrypted_writer))
+    } else {
+        Right(decrypted_writer)
+    };
+
+    // decrypt the body
+    let decryptor: DecryptorBE32<Aes256GcmSiv> = DecryptorBE32::new(
+        Key::<Aes256GcmSiv>::from_slice(dek.expose_secret()),
+        &metadata.nonce_body,
+    );
+    drop(dek); // done with DEK
+    stream_decrypt(decryptor, &mut reader, &mut writer)?;
+
+    // flush the decrypted file
+    writer.flush()?;
+    drop(writer);
+    drop(reader);
+
+    Ok((temp_dir, decrypted_file_path))
+}
+
 /// Read and parse the header of an encrypted file.
 /// This will error if the header is invalid.
 ///
 /// If error occurs, the state of reader is unspecified.
-fn read_header<R: BufRead>(reader: R) -> csv::Result<Header> {
+pub(crate) fn read_header<R: BufRead>(reader: R) -> csv::Result<Header> {
     // Read the byte array of the header.
     // This is to ensure that the CSV reader cannot read past the end of the header.
     let mut take_reader = reader.take(MAX_HEADER_SIZE);
@@ -188,7 +207,7 @@ fn read_header<R: BufRead>(reader: R) -> csv::Result<Header> {
 }
 
 /// Read and parse the metadata section of an encrypted file.
-fn read_metadata<A, S>(
+pub(crate) fn read_metadata<A, S>(
     reader: &mut impl io::Read,
 ) -> bincode::Result<Metadata<A, S>>
 where
@@ -296,7 +315,7 @@ fn open_file_with(
 ///
 /// If the password is not provided,
 /// the user will be prompted to enter a password.
-fn create_encrypted_file_alongside_path(
+pub(crate) fn create_encrypted_file_alongside_path(
     sibling_path: &Path,
     decrypted_file_path: PathBuf,
     no_compress: bool,
@@ -327,7 +346,7 @@ fn create_encrypted_file_alongside_path(
 }
 
 /// Replace the content of a file with zeros.
-fn fill_file_with_zeros(path: &Path) -> anyhow::Result<()> {
+pub(crate) fn fill_file_with_zeros(path: &Path) -> anyhow::Result<()> {
     let mut f = OpenOptions::new().write(true).open(path)?;
     let mut remaining_len = f.metadata()?.len();
     const BUF_SIZE: usize = 4 * 1024;
