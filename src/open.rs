@@ -19,7 +19,7 @@ use clap::Args;
 use either::Either::{Left, Right};
 use generic_array::{typenum::Sum, ArrayLength, GenericArray};
 use secrecy::{ExposeSecret, Secret};
-use tempfile::tempdir;
+use tempfile::{tempdir, TempDir};
 use uuid::Uuid;
 use xz2::write::XzDecoder;
 
@@ -67,63 +67,18 @@ pub fn open(
     args: &OpenArgs,
     password: Option<Secret<String>>,
 ) -> anyhow::Result<()> {
-    let mut in_reader = io::BufReader::new(File::open(&args.file)?);
-    let header = read_header(&mut in_reader)?;
-    let metadata: Metadata<Aes256GcmSiv, StreamBE32<_>> =
-        read_metadata(&mut in_reader)?;
-
-    // prepare a temporary file for decryption
-    let temp_dir = tempdir()?;
-    let decrypted_file_uuid = Uuid::new_v4();
-    let decrypted_file_path = temp_dir.path().join(
-        decrypted_file_uuid.to_string()
-            + "."
-            + str::from_utf8(&header.extension).unwrap(),
-    );
-    let decrypted_file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&decrypted_file_path)?;
-    let decrypted_writer = io::BufWriter::new(decrypted_file);
-
-    // derive the KEK
+    // obtain the password
     let password = match password {
         Some(pw) => pw,
         None => prompt_for_password(false)?,
     };
-    let kek = derive_kek(&password, &metadata.salt)?;
 
-    // decrypt the DEK
-    let cipher = Aes256GcmSiv::new(kek.expose_secret());
-    drop(kek); // done with KEK
-    let dek = Secret::new(
-        cipher
-            .decrypt(&metadata.nonce_dek, metadata.encrypted_dek.as_slice())?,
-    );
-    if dek.expose_secret().len() != Aes256GcmSiv::key_size() {
-        panic!("Unexpected length {} of decrypted DEK, expected {}. This is a bug in this program.",
-            dek.expose_secret().len(), Aes256GcmSiv::key_size());
-    }
-
-    // instantiate the decompressor if compression is enabled
-    let mut writer = if metadata.compression_enabled {
-        Left(XzDecoder::new(decrypted_writer))
-    } else {
-        Right(decrypted_writer)
-    };
-
-    // decrypt the body
-    let decryptor: DecryptorBE32<Aes256GcmSiv> = DecryptorBE32::new(
-        Key::<Aes256GcmSiv>::from_slice(dek.expose_secret()),
-        &metadata.nonce_body,
-    );
-    drop(dek); // done with DEK
-    stream_decrypt(decryptor, &mut in_reader, &mut writer)?;
-
-    // flush the decrypted file
-    writer.flush()?;
-    drop(writer);
-    drop(in_reader);
+    let mut in_reader = io::BufReader::new(File::open(&args.file)?);
+    let header = read_header(&mut in_reader)?;
+    let metadata: Metadata<Aes256GcmSiv, StreamBE32<_>> =
+        read_metadata(&mut in_reader)?;
+    let (temp_dir, decrypted_file_path) =
+        decrypt_to_temp_file(in_reader, &header, &metadata, &password)?;
 
     // open the decrypted file with the specified application and wait for it to finish
     open_file_with(
@@ -155,6 +110,66 @@ pub fn open(
     temp_dir.close()?;
 
     Ok(())
+}
+
+/// Decrypt password-protected data from reader to a newly-created temporary file.
+/// Return the temporary directory containing the file and the path to the file.
+pub fn decrypt_to_temp_file(
+    mut reader: impl BufRead,
+    header: &Header,
+    metadata: &Metadata<Aes256GcmSiv, StreamBE32<Aes256GcmSiv>>,
+    password: &Secret<String>,
+) -> anyhow::Result<(TempDir, PathBuf)> {
+    // prepare a temporary file for decryption
+    let temp_dir = tempdir()?;
+    let decrypted_file_uuid = Uuid::new_v4();
+    let decrypted_file_path = temp_dir.path().join(
+        decrypted_file_uuid.to_string()
+            + "."
+            + str::from_utf8(&header.extension).unwrap(),
+    );
+    let decrypted_file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&decrypted_file_path)?;
+    let decrypted_writer = io::BufWriter::new(decrypted_file);
+
+    // derive the KEK
+    let kek = derive_kek(&password, &metadata.salt)?;
+
+    // decrypt the DEK
+    let cipher = Aes256GcmSiv::new(kek.expose_secret());
+    drop(kek); // done with KEK
+    let dek = Secret::new(
+        cipher
+            .decrypt(&metadata.nonce_dek, metadata.encrypted_dek.as_slice())?,
+    );
+    if dek.expose_secret().len() != Aes256GcmSiv::key_size() {
+        panic!("Unexpected length {} of decrypted DEK, expected {}. This is a bug in this program.",
+            dek.expose_secret().len(), Aes256GcmSiv::key_size());
+    }
+
+    // instantiate the decompressor if compression is enabled
+    let mut writer = if metadata.compression_enabled {
+        Left(XzDecoder::new(decrypted_writer))
+    } else {
+        Right(decrypted_writer)
+    };
+
+    // decrypt the body
+    let decryptor: DecryptorBE32<Aes256GcmSiv> = DecryptorBE32::new(
+        Key::<Aes256GcmSiv>::from_slice(dek.expose_secret()),
+        &metadata.nonce_body,
+    );
+    drop(dek); // done with DEK
+    stream_decrypt(decryptor, &mut reader, &mut writer)?;
+
+    // flush the decrypted file
+    writer.flush()?;
+    drop(writer);
+    drop(reader);
+
+    Ok((temp_dir, decrypted_file_path))
 }
 
 /// Read and parse the header of an encrypted file.
