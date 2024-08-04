@@ -436,7 +436,7 @@ checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
 [[package]]
 name = "open-wait"
 version = "0.1.0"
-source = "git+https://github.com/ccyuen1/open-wait.git#374a6bb65a6658351c8ecc3a08552bae5a47caee"
+source = "git+https://github.com/ccyuen1/open-wait.git#7f60d3c67e8011739e68b6a20d7b53876f0811f9"
 
 [[package]]
 name = "password-hash"
