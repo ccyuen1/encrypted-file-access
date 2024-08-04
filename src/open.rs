@@ -142,7 +142,8 @@ pub fn decrypt_to_temp_file(
     drop(kek); // done with KEK
     let dek = Secret::new(
         cipher
-            .decrypt(&metadata.nonce_dek, metadata.encrypted_dek.as_slice())?,
+            .decrypt(&metadata.nonce_dek, metadata.encrypted_dek.as_slice())
+            .map_err(|_| anyhow!("Failed to decrypt the file. Perhaps a wrong password is provided?"))?,
     );
     if dek.expose_secret().len() != Aes256GcmSiv::key_size() {
         panic!("Unexpected length {} of decrypted DEK, expected {}. This is a bug in this program.",
