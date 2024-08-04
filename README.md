@@ -94,4 +94,4 @@ The password-protected file format is specified in [encrypted-file-format.md](en
 
 ## Acknowledgement
 
-This software depends on many libraries on [crates.io](https://crates.io). Thanks for the library authors!
+This software depends on many libraries on [crates.io](https://crates.io). Give thanks to the library authors!
