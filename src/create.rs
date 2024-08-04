@@ -103,7 +103,7 @@ pub fn create(
     // derive the key encryption key (KEK)
     let password = match password {
         Some(pw) => pw,
-        None => prompt_for_password()?,
+        None => prompt_for_password(true)?,
     };
     let kek = derive_kek(&password, &salt)?;
     drop(password); // done with password

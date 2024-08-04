@@ -12,11 +12,15 @@ use crate::config::{
     argon2_config, AEAD_STREAM_ENCRYPTION_BUFFER_LENGTH, AES256GCMSIV_TAG_SIZE,
 };
 
-/// Prompt the user for a password
-pub fn prompt_for_password() -> anyhow::Result<Secret<String>> {
-    Ok(Secret::new(rpassword::prompt_password(
-        "Create a password for the file: ",
-    )?))
+/// Prompt the user for a password.
+/// Parameter `create` indicates whether a new password is being created or not.
+pub fn prompt_for_password(create: bool) -> anyhow::Result<Secret<String>> {
+    let message = if create {
+        "Create a password for the file: "
+    } else {
+        "Enter the password for the file: "
+    };
+    Ok(Secret::new(rpassword::prompt_password(message)?))
 }
 
 /// Encrypt the content from the reader and write to the writer.  

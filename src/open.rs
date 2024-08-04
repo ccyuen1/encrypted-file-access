@@ -86,7 +86,7 @@ pub fn open(
     // derive the KEK
     let password = match password {
         Some(pw) => pw,
-        None => prompt_for_password()?,
+        None => prompt_for_password(false)?,
     };
     let kek = derive_kek(&password, &metadata.salt)?;
 
