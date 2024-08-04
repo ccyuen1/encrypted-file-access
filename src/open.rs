@@ -135,7 +135,7 @@ pub fn decrypt_to_temp_file(
     let decrypted_writer = io::BufWriter::new(decrypted_file);
 
     // derive the KEK
-    let kek = derive_kek(&password, &metadata.salt)?;
+    let kek = derive_kek(password, &metadata.salt)?;
 
     // decrypt the DEK
     let cipher = Aes256GcmSiv::new(kek.expose_secret());
@@ -176,7 +176,7 @@ pub fn decrypt_to_temp_file(
 /// This will error if the header is invalid.
 ///
 /// If error occurs, the state of reader is unspecified.
-fn read_header<R: BufRead>(reader: R) -> csv::Result<Header> {
+pub(crate) fn read_header<R: BufRead>(reader: R) -> csv::Result<Header> {
     // Read the byte array of the header.
     // This is to ensure that the CSV reader cannot read past the end of the header.
     let mut take_reader = reader.take(MAX_HEADER_SIZE);
@@ -206,7 +206,7 @@ fn read_header<R: BufRead>(reader: R) -> csv::Result<Header> {
 }
 
 /// Read and parse the metadata section of an encrypted file.
-fn read_metadata<A, S>(
+pub(crate) fn read_metadata<A, S>(
     reader: &mut impl io::Read,
 ) -> bincode::Result<Metadata<A, S>>
 where
@@ -314,7 +314,7 @@ fn open_file_with(
 ///
 /// If the password is not provided,
 /// the user will be prompted to enter a password.
-fn create_encrypted_file_alongside_path(
+pub(crate) fn create_encrypted_file_alongside_path(
     sibling_path: &Path,
     decrypted_file_path: PathBuf,
     no_compress: bool,
@@ -345,7 +345,7 @@ fn create_encrypted_file_alongside_path(
 }
 
 /// Replace the content of a file with zeros.
-fn fill_file_with_zeros(path: &Path) -> anyhow::Result<()> {
+pub(crate) fn fill_file_with_zeros(path: &Path) -> anyhow::Result<()> {
     let mut f = OpenOptions::new().write(true).open(path)?;
     let mut remaining_len = f.metadata()?.len();
     const BUF_SIZE: usize = 4 * 1024;
