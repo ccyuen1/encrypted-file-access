@@ -18,7 +18,7 @@ pub fn prompt_for_password(create: bool) -> anyhow::Result<Secret<String>> {
     let message = if create {
         "Create a password for the file: "
     } else {
-        "Enter the password for the file: "
+        "Enter the existing password for the file: "
     };
     Ok(Secret::new(rpassword::prompt_password(message)?))
 }
