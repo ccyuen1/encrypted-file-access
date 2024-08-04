@@ -53,8 +53,7 @@ pub struct CreateArgs {
 /// If the password is not provided, the user is prompted to enter a password.
 ///
 /// # Panics
-/// Panics if `getrandom` is unable to provide secure entropy.  
-/// Panics if unable to hash the password or encrypt the data.
+/// Panics if `getrandom` is unable to provide secure entropy.
 ///
 /// # Examples
 /// ```no_run
