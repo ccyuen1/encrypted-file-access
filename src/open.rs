@@ -49,6 +49,9 @@ pub struct OpenArgs {
 ///
 /// If the password is not provided, the user will be prompted to enter it.
 ///
+/// # Panics
+/// Panics if `getrandom` is unable to provide secure entropy to re-encrypt the file.
+///
 /// # Examples
 /// ```no_run
 /// use std::path::PathBuf;
