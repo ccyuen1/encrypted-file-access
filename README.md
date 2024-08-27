@@ -92,6 +92,10 @@ Options:
 
 The password-protected file format is specified in [encrypted-file-format.md](encrypted-file-format.md).
 
+## To-dos
+
+- Allow users to decrypt a password-protected file and save to file system.
+
 ## Acknowledgement
 
 This software depends on many libraries on [crates.io](https://crates.io). Give thanks to the library authors!
