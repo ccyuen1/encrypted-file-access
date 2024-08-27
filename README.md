@@ -95,6 +95,9 @@ The password-protected file format is specified in [encrypted-file-format.md](en
 ## To-dos
 
 - Allow users to decrypt a password-protected file and save to file system.
+- After opening a password-protected file, add an option to manually control when to save the work instead of waiting the application to terminate. This can benefit in the following ways:
+  - Many applications are just launchers of their internal executables. Waiting such applications does not make sense.
+  - This allows saving partial progress on the file.
 
 ## Acknowledgement
 
